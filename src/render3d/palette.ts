@@ -1,0 +1,44 @@
+import type { ItemId } from "../sim/items";
+
+// Farben der 3D-Darstellung (sRGB-Hex). Low-Poly, flach schattiert.
+
+export const ITEM_COLORS: Record<ItemId, number> = {
+  iron_ore: 0x8fa3b8,
+  copper_ore: 0xd9824a,
+  iron_plate: 0xc8d3df,
+  copper_plate: 0xf0a060,
+  gear: 0xa9b6c6,
+  wire: 0xe8a35c,
+  circuit: 0x3fae5a,
+};
+
+export const PALETTE = {
+  sky: 0xa9c7d8,
+  hemiGround: 0x4a5a3c,
+  ground: 0x6f8a58,
+  groundAlt: 0x6b8654,
+  groundGap: 0x5b7546,
+  oreGround: { iron_ore: 0x6f7c86, copper_ore: 0x8a6a4c },
+  rock: { iron_ore: 0x7d93a8, copper_ore: 0xc0743f },
+
+  metalDark: 0x3a4250,
+  metal: 0x77818f,
+  metalLight: 0xb4bcc6,
+  beltBed: 0x2b3038,
+  beltRail: 0xd9a63a,
+  port: 0xffc94a,
+
+  extractor: 0xd9a63a,
+  extractorBody: 0x4c5868,
+  smelter: 0x8a6e5c,
+  smelterStone: 0x6b5446,
+  smelterGlow: 0xff7a2a,
+  assembler: 0x3f6fa8,
+  assemblerTop: 0x2c4f7a,
+  hub: 0xe0c060,
+  hubBase: 0x4a4f58,
+  beacon: 0x7fd1ff,
+  selection: 0x7fd1ff,
+} as const;
+
+export const cssHex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
