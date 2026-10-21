@@ -1,10 +1,14 @@
 import {
+  AdditiveBlending,
   BoxGeometry,
+  ConeGeometry,
   CylinderGeometry,
   DodecahedronGeometry,
   Group,
   Mesh,
+  MeshBasicMaterial,
   MeshStandardMaterial,
+  RingGeometry,
   SphereGeometry,
   TorusGeometry,
 } from "three";
@@ -239,131 +243,145 @@ function limb(p: Paint, a: [number, number], b: [number, number], t: number, col
 
 // ---------------------------------------------------------------- Hub
 
-/** Hoehe des Landedecks; dort parkt der Flieger (scene-view.ts startet ihn von hier). */
-export const HUB_PAD_Y = 0.66;
+/** Hoehe der Startplattform; dort steht die Drohne (scene-view.ts startet sie von hier). */
+export const HUB_PAD_Y = 0.6;
+
+/** Ecken der vier Raketen-Triebwerke der Drohne (x, z). */
+const THRUSTERS: [number, number][] = [
+  [0.19, 0.19],
+  [0.19, -0.19],
+  [-0.19, 0.19],
+  [-0.19, -0.19],
+];
 
 export function hubModel(): Group {
   const root = new Group();
   const p = new Paint();
-  // Achteckige Plattform mit Einfuelloeffnungen zu allen vier Seiten.
-  p.add(cylG(0.5, 0.54, 0.1, 8, 0, 0, 0).rotateY(Math.PI / 8), P.hubBase);
-  p.add(cylG(0.46, 0.5, 0.03, 8, 0, 0.1, 0).rotateY(Math.PI / 8), P.hubPad);
+  // Achteckiger Sockel mit Einfuelloeffnungen zu allen vier Seiten.
+  p.add(cylG(0.5, 0.54, 0.1, 8, 0, 0, 0).rotateY(Math.PI / 8), P.hubDark);
+  p.add(cylG(0.46, 0.5, 0.03, 8, 0, 0.1, 0).rotateY(Math.PI / 8), P.hubBase);
   for (let i = 0; i < 4; i++) {
     const a = (i * Math.PI) / 2;
-    p.add(boxG(0.16, 0.1, 0.28, 0.36, 0.1, 0).rotateY(a), P.hubTrim);
+    p.add(boxG(0.16, 0.1, 0.28, 0.36, 0.1, 0).rotateY(a), P.hubShell);
     p.add(boxG(0.17, 0.02, 0.2, 0.36, 0.2, 0).rotateY(a), P.rubber);
   }
-  // Lager-Turm, der das Landedeck traegt.
-  p.add(cylG(0.28, 0.36, 0.3, 8, 0, 0.13, 0), P.hub);
-  p.add(cylG(0.3, 0.3, 0.04, 8, 0, 0.29, 0), P.hubTrim);
-  p.add(cylG(0.2, 0.26, 0.2, 8, 0, 0.33, 0), P.hub);
-  for (const [x, z] of [
-    [-0.24, -0.2],
-    [-0.24, 0.2],
-    [0.24, -0.2],
-    [0.24, 0.2],
-  ] as const) {
-    p.add(boxG(0.04, HUB_PAD_Y - 0.13, 0.04, x, 0.13, z), P.metalLight);
+  // Schlanker Turm aus Segmenten, nach oben breiter (traegt die Plattform).
+  p.add(cylG(0.24, 0.32, 0.16, 8, 0, 0.13, 0), P.hubShell);
+  p.add(cylG(0.2, 0.24, 0.16, 8, 0, 0.29, 0), P.hubDark);
+  p.add(cylG(0.3, 0.2, 0.1, 8, 0, 0.45, 0), P.hubShell);
+  // Vier schraege Stuetzen zur Plattform.
+  for (let i = 0; i < 4; i++) {
+    const g = boxG(0.035, 0.36, 0.035, 0, -0.18, 0);
+    g.rotateZ(-0.5);
+    g.translate(0.27, 0.36, 0);
+    g.rotateY(Math.PI / 4 + (i * Math.PI) / 2);
+    p.add(g, P.metalLight);
+  }
+  // Runde Startplattform mit Rand.
+  p.add(cylG(0.4, 0.34, 0.06, 16, 0, HUB_PAD_Y - 0.06, 0), P.hubDark);
+  p.add(cylG(0.41, 0.41, 0.015, 16, 0, HUB_PAD_Y - 0.03, 0), P.hubShell);
+  root.add(p.mesh(paintMetalMat));
+
+  // Leuchtende Teile teilen sich eine Materialkopie je Hub (Name "beacon").
+  const neon = new MeshStandardMaterial({ color: P.hubNeon, emissive: P.hubNeon, emissiveIntensity: 1, flatShading: true });
+  const padRing = new RingGeometry(0.26, 0.31, 24);
+  padRing.rotateX(-Math.PI / 2);
+  const pr = mesh(padRing, neon, 0, HUB_PAD_Y + 0.002, 0);
+  pr.name = "beacon";
+  pr.castShadow = false;
+  root.add(pr);
+  for (const y of [0.27, 0.43]) {
+    const band = mesh(new CylinderGeometry(0.245, 0.245, 0.02, 8), neon, 0, y, 0);
+    band.name = "beacon";
+    band.castShadow = false;
+    root.add(band);
   }
 
-  // Landedeck mit Rand, Mittellinie und Landekreuz.
-  p.add(boxG(0.66, 0.05, 0.5, 0, HUB_PAD_Y - 0.05, 0), P.metalDark);
-  p.add(boxG(0.7, 0.02, 0.04, 0, HUB_PAD_Y - 0.02, -0.25), P.hubTrim);
-  p.add(boxG(0.7, 0.02, 0.04, 0, HUB_PAD_Y - 0.02, 0.25), P.hubTrim);
-  for (let i = -2; i <= 2; i++) p.add(boxG(0.06, 0.004, 0.015, i * 0.12, HUB_PAD_Y, 0), P.hubTrim);
-  p.add(boxG(0.1, 0.004, 0.02, -0.22, HUB_PAD_Y, 0), P.planeAccent);
-  p.add(boxG(0.02, 0.004, 0.1, -0.22, HUB_PAD_Y, 0), P.planeAccent);
-
-  // Kleine Kisten auf der Plattform.
-  p.add(boxG(0.12, 0.1, 0.12, 0.31, 0.13, 0.31), P.extractor);
-  p.add(boxG(0.1, 0.08, 0.1, -0.31, 0.13, -0.31), P.assembler);
-  // Mast fuer das Leuchtfeuer an der Ecke.
-  p.add(cylG(0.02, 0.03, 0.62, 6, -0.31, 0.13, 0.31), P.metalLight);
-  root.add(p.mesh());
-
-  const beacon = new MeshStandardMaterial({ color: P.beacon, emissive: P.beacon, emissiveIntensity: 1, flatShading: true });
-  const b = mesh(new SphereGeometry(0.06, 8, 6), beacon, -0.31, 0.79, 0.31);
-  b.name = "beacon";
-  b.castShadow = false;
-  root.add(b);
-
-  // Drehender Ring mit Positionslichtern um den Turm.
+  // Holografischer Ring, der sich um den Turm dreht.
   const ring = new Group();
   ring.name = "ring";
-  ring.position.set(0, 0.42, 0);
+  ring.position.set(0, 0.36, 0);
   ring.rotation.x = Math.PI / 2;
   const rp = new Paint();
-  rp.add(new TorusGeometry(0.3, 0.02, 6, 24), P.hub);
-  for (let i = 0; i < 4; i++) {
-    const a = (i * Math.PI) / 2;
-    const g = new BoxGeometry(0.05, 0.05, 0.05);
-    g.translate(Math.cos(a) * 0.3, Math.sin(a) * 0.3, 0);
-    rp.add(g, i % 2 ? P.beacon : P.hubTrim);
+  rp.add(new TorusGeometry(0.34, 0.012, 4, 32), P.hubNeon);
+  for (let i = 0; i < 3; i++) {
+    const a = (i * Math.PI * 2) / 3;
+    const g = new BoxGeometry(0.06, 0.03, 0.03);
+    g.translate(Math.cos(a) * 0.34, Math.sin(a) * 0.34, 0);
+    rp.add(g, P.hubShell);
   }
   ring.add(rp.mesh(paintMetalMat));
   root.add(ring);
 
-  const plane = planeModel();
-  plane.position.set(0, HUB_PAD_Y, 0);
-  plane.scale.setScalar(1.25);
-  root.add(plane);
+  // Druckwelle beim Start: flacher Ring, eigene Materialkopie je Hub ("shock").
+  const shockMat = new MeshBasicMaterial({ color: P.hubNeon, transparent: true, opacity: 0, depthWrite: false, blending: AdditiveBlending });
+  const shockGeo = new RingGeometry(0.3, 0.42, 32);
+  shockGeo.rotateX(-Math.PI / 2);
+  const shock = new Mesh(shockGeo, shockMat);
+  shock.name = "shock";
+  shock.position.y = HUB_PAD_Y + 0.01;
+  shock.visible = false;
+  root.add(shock);
+
+  const drone = droneModel();
+  drone.position.set(0, HUB_PAD_Y, 0);
+  drone.scale.setScalar(1.25);
+  root.add(drone);
   return root;
 }
 
 /**
- * Kleiner Fracht-Flieger, Nase nach +x, Raeder bei y = 0. Name "plane",
- * Propeller "prop" (dreht um die x-Achse).
+ * Liefer-Drohne mit vier Raketen-Triebwerken. Name "drone"; die Flammen unter
+ * den Duesen heissen "flame" (Spitze nach unten, scene-view skaliert sie).
  */
-function planeModel(): Group {
-  const plane = new Group();
-  plane.name = "plane";
+function droneModel(): Group {
+  const drone = new Group();
+  drone.name = "drone";
   const p = new Paint();
-  // Rumpf: liegender Zylinder, hinten schlanker.
-  const body = cylG(0.035, 0.055, 0.4, 8, 0, -0.2, 0);
-  body.rotateZ(-Math.PI / 2);
-  body.translate(0, 0.09, 0);
-  p.add(body, P.plane);
-  const nose = coneG(0.055, 0.07, 8, 0, -0.035, 0);
-  nose.rotateZ(-Math.PI / 2);
-  nose.translate(0.235, 0.09, 0);
-  p.add(nose, P.planeAccent);
-  // Streifen und Cockpit.
-  const stripe = cylG(0.057, 0.057, 0.04, 8, 0, -0.02, 0);
-  stripe.rotateZ(-Math.PI / 2);
-  stripe.translate(-0.06, 0.09, 0);
-  p.add(stripe, P.planeAccent);
-  p.add(boxG(0.09, 0.04, 0.07, 0.11, 0.115, 0), P.glass);
-  // Tragflaechen (Hochdecker) mit orangen Spitzen.
-  p.add(boxG(0.13, 0.016, 0.56, 0.04, 0.145, 0), P.plane);
-  p.add(boxG(0.13, 0.017, 0.06, 0.04, 0.145, -0.25), P.planeAccent);
-  p.add(boxG(0.13, 0.017, 0.06, 0.04, 0.145, 0.25), P.planeAccent);
-  for (const z of [-0.14, 0.14]) {
-    const strut = boxG(0.015, 0.09, 0.015, 0, -0.045, 0);
-    strut.rotateX(z > 0 ? -0.6 : 0.6);
-    strut.translate(0.04, 0.11, z * 0.6);
-    p.add(strut, P.metalLight);
+  // Landebeine.
+  for (const [x, z] of THRUSTERS) {
+    const leg = boxG(0.018, 0.08, 0.018, 0, 0, 0);
+    leg.translate(x * 0.75, 0, z * 0.75);
+    p.add(leg, P.metalDark);
+    p.add(boxG(0.05, 0.012, 0.05, x * 0.75, 0, z * 0.75), P.metalDark);
   }
-  // Leitwerk.
-  p.add(boxG(0.08, 0.012, 0.2, -0.17, 0.1, 0), P.plane);
-  p.add(boxG(0.08, 0.1, 0.012, -0.17, 0.1, 0), P.planeAccent);
-  // Fahrwerk.
-  for (const z of [-0.06, 0.06]) {
-    p.add(boxG(0.012, 0.05, 0.012, 0.08, 0.02, z), P.metalDark);
-    const wheel = cylG(0.022, 0.022, 0.015, 8, 0, -0.0075, 0);
-    wheel.rotateX(Math.PI / 2);
-    wheel.translate(0.08, 0.022, z);
-    p.add(wheel, P.rubber);
+  // Rumpf: flaches Achteck mit Kante, oben eine Glaskuppel.
+  p.add(cylG(0.17, 0.14, 0.05, 8, 0, 0.07, 0).rotateY(Math.PI / 8), P.hubDark);
+  p.add(cylG(0.16, 0.17, 0.05, 8, 0, 0.12, 0).rotateY(Math.PI / 8), P.hubShell);
+  p.add(cylG(0.12, 0.16, 0.03, 8, 0, 0.17, 0).rotateY(Math.PI / 8), P.hubShell);
+  const dome = new SphereGeometry(0.08, 10, 5, 0, Math.PI * 2, 0, Math.PI / 2);
+  dome.translate(0, 0.2, 0);
+  p.add(dome, P.glass);
+  // Frachtkapsel unten.
+  p.add(boxG(0.12, 0.04, 0.12, 0, 0.035, 0), P.hubDark);
+  // Ausleger und Triebwerke mit Duesen.
+  for (const [x, z] of THRUSTERS) {
+    const arm = boxG(0.2, 0.025, 0.04, 0.1, 0, 0);
+    arm.rotateY(-Math.atan2(z, x));
+    arm.translate(0, 0.12, 0);
+    p.add(arm, P.hubDark);
+    p.add(cylG(0.045, 0.04, 0.1, 8, x, 0.09, z), P.hubShell);
+    p.add(cylG(0.047, 0.047, 0.015, 8, x, 0.17, z), P.planeAccent);
+    p.add(cylG(0.03, 0.04, 0.04, 8, x, 0.05, z), P.metalDark);
   }
-  p.add(boxG(0.012, 0.04, 0.012, -0.18, 0.02, 0), P.metalDark);
-  plane.add(p.mesh());
+  drone.add(p.mesh(paintMetalMat));
 
-  const prop = new Group();
-  prop.name = "prop";
-  prop.position.set(0.275, 0.09, 0);
-  const pp = new Paint();
-  pp.add(boxG(0.01, 0.2, 0.025, 0, -0.1, 0), P.metalDark);
-  pp.add(boxG(0.01, 0.025, 0.2, 0, -0.0125, 0), P.metalDark);
-  prop.add(pp.mesh());
-  plane.add(prop);
-  return plane;
+  // Flammen: helle Plasma-Kegel, Spitze nach unten, Ursprung an der Duese.
+  const flameMat = new MeshBasicMaterial({ color: P.thrusterFlame, transparent: true, opacity: 0.85, depthWrite: false, blending: AdditiveBlending });
+  const coreMat = new MeshBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.9, depthWrite: false, blending: AdditiveBlending });
+  const flameGeo = new ConeGeometry(0.035, 0.2, 8);
+  flameGeo.rotateX(Math.PI);
+  flameGeo.translate(0, -0.1, 0);
+  const coreGeo = new ConeGeometry(0.018, 0.12, 6);
+  coreGeo.rotateX(Math.PI);
+  coreGeo.translate(0, -0.06, 0);
+  for (const [x, z] of THRUSTERS) {
+    const flame = new Group();
+    flame.name = "flame";
+    flame.position.set(x, 0.05, z);
+    flame.add(new Mesh(flameGeo, flameMat), new Mesh(coreGeo, coreMat));
+    flame.scale.setScalar(0.001);
+    drone.add(flame);
+  }
+  return drone;
 }

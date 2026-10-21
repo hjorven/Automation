@@ -64,8 +64,11 @@ export const PALETTE = {
   foundry: 0x6a6f78,
   foundryGlow: 0xffa040,
   extractorMk2: 0x3f8fc0,
-  plane: 0xeef0ea,
   planeAccent: 0xf08a24,
+  hubShell: 0xdfe4ea,
+  hubDark: 0x2b313b,
+  hubNeon: 0x5fe3ff,
+  thrusterFlame: 0x6fc8ff,
 } as const;
 
 export const cssHex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
