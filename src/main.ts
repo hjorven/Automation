@@ -1,9 +1,8 @@
-import { Application } from "pixi.js";
-import { COLORS } from "./config";
+import { NeutralToneMapping, PCFSoftShadowMap, WebGLRenderer } from "three";
 import { Editor } from "./game/editor";
 import { Controls } from "./input/controls";
-import { Camera } from "./render/camera";
-import { WorldView } from "./render/world-view";
+import { CameraRig } from "./render3d/camera-rig";
+import { SceneView } from "./render3d/scene-view";
 import { TICK_MS } from "./sim/constants";
 import { deserialize, serialize, type SaveData } from "./sim/save";
 import { World } from "./sim/world";
@@ -15,29 +14,35 @@ import { Ui } from "./ui/ui";
 const MAX_CATCH_UP = 5;
 const UI_INTERVAL_MS = 250;
 const AUTOSAVE_INTERVAL_MS = 15_000;
+/** Kameradrehung pro Tastendruck (Q/E). */
+const KEY_TURN = Math.PI / 8;
 
 async function main() {
   const host = document.getElementById("app")!;
 
-  const app = new Application();
-  await app.init({
-    background: COLORS.background,
-    resizeTo: host,
-    antialias: true,
-    resolution: window.devicePixelRatio || 1,
-    autoDensity: true,
-    preference: "webgl",
-  });
-  host.appendChild(app.canvas);
+  const renderer = new WebGLRenderer({ antialias: true, powerPreference: "high-performance" });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = PCFSoftShadowMap;
+  renderer.toneMapping = NeutralToneMapping;
+  host.appendChild(renderer.domElement);
 
   const world = await loadWorld();
   const editor = new Editor(world);
-  const camera = new Camera(app.screen.width, app.screen.height);
-  camera.pos = { x: 0.5, y: 0.5 }; // Hub in die Bildmitte
-  const view = new WorldView();
-  app.stage.addChild(view.container);
+  const rig = new CameraRig(host.clientWidth, host.clientHeight);
+  const view = new SceneView();
 
-  new Controls(app.canvas, camera, editor);
+  const resize = () => {
+    renderer.setSize(host.clientWidth, host.clientHeight);
+    rig.resize(host.clientWidth, host.clientHeight);
+  };
+  resize();
+  window.addEventListener("resize", resize);
+
+  new Controls(renderer.domElement, rig, editor);
+  // Fuer Tests und Screenshots im Dev-Server.
+  if (import.meta.env.DEV) Object.assign(window, { game: { world, editor, rig } });
+
   // Speichern: regelmaessig und sobald Safari die Seite in den Hintergrund legt.
   let lastSavedAt: number | null = null;
   let saving = true;
@@ -74,13 +79,23 @@ async function main() {
   });
   const ui = new Ui(editor, () => (menu.isOpen ? menu.close() : menu.open()));
 
-  app.renderer.on("resize", (w: number, h: number) => camera.resize(w, h));
+  window.addEventListener("keydown", (ev) => {
+    if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if ((ev.target as HTMLElement).closest("textarea, input")) return;
+    const cx = host.clientWidth / 2;
+    const cy = host.clientHeight / 2;
+    if (ev.key === "q" || ev.key === "Q") rig.rotateAt(-KEY_TURN, cx, cy);
+    else if (ev.key === "e" || ev.key === "E") rig.rotateAt(KEY_TURN, cx, cy);
+  });
 
   // Simulation im festen Takt, Darstellung so oft wie der Bildschirm kann.
   let acc = 0;
   let uiTimer = 0;
-  app.ticker.add((t) => {
-    acc += t.deltaMS;
+  let last = performance.now();
+  renderer.setAnimationLoop((now: number) => {
+    const deltaMS = Math.min(250, now - last);
+    last = now;
+    acc += deltaMS;
     let steps = 0;
     while (acc >= TICK_MS && steps < MAX_CATCH_UP) {
       world.step();
@@ -89,12 +104,16 @@ async function main() {
     }
     if (steps === MAX_CATCH_UP) acc = 0;
 
-    view.render(world, camera, acc / TICK_MS, editor.selectedId);
+    view.render(world, rig, acc / TICK_MS, deltaMS / 1000, editor.selectedId);
+    renderer.render(view.scene, rig.camera);
 
-    uiTimer += t.deltaMS;
+    uiTimer += deltaMS;
     if (uiTimer >= UI_INTERVAL_MS) {
       uiTimer = 0;
       ui.tick();
+      // Der Drehen-Pfeil zeigt die Baurichtung so, wie sie gerade auf dem Bildschirm liegt.
+      const arrow = document.getElementById("rotate-arrow");
+      if (arrow) arrow.style.transform = `rotate(${rig.yaw}rad)`;
     }
   });
 }

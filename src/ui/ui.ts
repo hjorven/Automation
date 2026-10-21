@@ -1,5 +1,5 @@
 import type { Editor, Tool } from "../game/editor";
-import { ITEM_STYLE } from "../render/item-style";
+import { ITEM_COLORS, PALETTE, cssHex } from "../render3d/palette";
 import type { Entity } from "../sim/entities";
 import { GOALS, currentGoalIndex } from "../sim/goals";
 import { ITEM_NAMES, ITEM_ORDER, type ItemId } from "../sim/items";
@@ -7,11 +7,11 @@ import { recipeById, recipesFor, type ItemStack, type Recipe } from "../sim/reci
 
 const TOOLS: { tool: Tool; label: string; key: string; color: string }[] = [
   { tool: "hand", label: "Hand", key: "1", color: "#cfd8e3" },
-  { tool: "belt", label: "Band", key: "2", color: "#3a4757" },
-  { tool: "extractor", label: "Bohrer", key: "3", color: "#3d4f63" },
-  { tool: "smelter", label: "Schmelze", key: "4", color: "#6b3f2a" },
-  { tool: "assembler", label: "Montage", key: "5", color: "#2f4a6b" },
-  { tool: "hub", label: "Hub", key: "6", color: "#6e5d22" },
+  { tool: "belt", label: "Band", key: "2", color: cssHex(PALETTE.beltRail) },
+  { tool: "extractor", label: "Bohrer", key: "3", color: cssHex(PALETTE.extractorBody) },
+  { tool: "smelter", label: "Schmelze", key: "4", color: cssHex(PALETTE.smelter) },
+  { tool: "assembler", label: "Montage", key: "5", color: cssHex(PALETTE.assembler) },
+  { tool: "hub", label: "Hub", key: "6", color: cssHex(PALETTE.hub) },
   { tool: "delete", label: "Abriss", key: "7", color: "#8a3030" },
 ];
 
@@ -96,7 +96,7 @@ export class Ui {
       goalHtml +
       (stock
         ? `<div class="stocks">${stock}</div>`
-        : `<div class="hint">Bohrer auf Erz setzen und per Band zum Hub führen.<br>Zwei Finger: bewegen und zoomen.</div>`);
+        : `<div class="hint">Bohrer auf Erz setzen und per Band zum Hub führen.<br>Zwei Finger: bewegen, zoomen und drehen.</div>`);
   }
 
   private renderPanel() {
@@ -188,7 +188,7 @@ function itemLabel(i: ItemId): string {
 }
 
 function dot(i: ItemId): string {
-  return `<span class="dot" style="background:#${ITEM_STYLE[i].color.toString(16).padStart(6, "0")}"></span>`;
+  return `<span class="dot" style="background:${cssHex(ITEM_COLORS[i])}"></span>`;
 }
 
 function byId(id: string): HTMLElement {

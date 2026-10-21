@@ -1,5 +1,12 @@
 import type { Editor } from "../game/editor";
-import type { Camera } from "../render/camera";
+
+/** Was die Gesten von einer Kamera brauchen. */
+export interface ViewCamera {
+  screenToWorld(sx: number, sy: number): { x: number; y: number };
+  panByPixels(dx: number, dy: number): void;
+  zoomAt(factor: number, sx: number, sy: number): void;
+  rotateAt(angle: number, sx: number, sy: number): void;
+}
 
 /** Bewegung unter dieser Schwelle (Pixel) gilt noch als Antippen. */
 const TAP_SLOP = 8;
@@ -10,7 +17,7 @@ type Gesture =
   | { kind: "pending"; tileX: number; tileY: number }
   | { kind: "stroke" }
   | { kind: "pan"; startX: number; startY: number; t0: number; moved: boolean; tapSelects: boolean }
-  | { kind: "pinch"; dist: number; midX: number; midY: number }
+  | { kind: "pinch"; dist: number; angle: number; midX: number; midY: number }
   // Nach einem Pinch: warten, bis alle Finger weg sind, damit nichts versehentlich gebaut wird.
   | { kind: "done" };
 
@@ -18,8 +25,8 @@ type Gesture =
  * Pointer-Gesten fuer Touch und Maus:
  * - Hand-Werkzeug: ein Finger verschiebt, Antippen waehlt aus.
  * - Bau-Werkzeug: ein Finger baut (Ziehen = mehrere Felder / Baender malen).
- * - Zwei Finger: immer verschieben + zoomen.
- * - Maus: Rad zoomt, rechte/mittlere Taste verschiebt.
+ * - Zwei Finger: immer verschieben, zoomen und durch Verdrehen die Kamera drehen.
+ * - Maus: Rad zoomt, rechte/mittlere Taste verschiebt, Q/E drehen.
  */
 export class Controls {
   private readonly pointers = new Map<number, { x: number; y: number }>();
@@ -27,7 +34,7 @@ export class Controls {
 
   constructor(
     private readonly el: HTMLElement,
-    private readonly camera: Camera,
+    private readonly camera: ViewCamera,
     private readonly editor: Editor,
   ) {
     el.addEventListener("pointerdown", this.onDown);
@@ -58,7 +65,7 @@ export class Controls {
     } else if (this.pointers.size === 2) {
       if (this.g.kind === "stroke") this.editor.strokeEnd();
       const m = this.midpoint();
-      this.g = { kind: "pinch", dist: this.distance(), midX: m.x, midY: m.y };
+      this.g = { kind: "pinch", dist: this.distance(), angle: this.angle(), midX: m.x, midY: m.y };
     }
   };
 
@@ -97,7 +104,12 @@ export class Controls {
         const m = this.midpoint();
         this.camera.panByPixels(m.x - g.midX, m.y - g.midY);
         if (g.dist > 0) this.camera.zoomAt(dist / g.dist, m.x, m.y);
+        const angle = this.angle();
+        // Ueber die +-pi-Grenze hinweg den kurzen Weg nehmen.
+        const turn = Math.atan2(Math.sin(angle - g.angle), Math.cos(angle - g.angle));
+        this.camera.rotateAt(turn, m.x, m.y);
         g.dist = dist;
+        g.angle = angle;
         g.midX = m.x;
         g.midY = m.y;
         break;
@@ -130,6 +142,11 @@ export class Controls {
   private distance(): number {
     const [a, b] = [...this.pointers.values()];
     return Math.hypot(a.x - b.x, a.y - b.y);
+  }
+
+  private angle(): number {
+    const [a, b] = [...this.pointers.values()];
+    return Math.atan2(b.y - a.y, b.x - a.x);
   }
 
   private midpoint(): { x: number; y: number } {
