@@ -32,7 +32,10 @@ export class Ui {
   private readonly panel = byId("panel");
   private hudVersion = -1;
 
-  constructor(private readonly editor: Editor) {
+  constructor(
+    private readonly editor: Editor,
+    private readonly onMenu: () => void,
+  ) {
     this.buildToolbar();
     this.panel.addEventListener("click", this.onPanelClick);
     window.addEventListener("keydown", this.onKey);
@@ -67,12 +70,14 @@ export class Ui {
         `<span class="swatch" style="background:${t.color}"></span>${t.label}</button>`,
     ).join("");
     this.toolbar.innerHTML =
-      html + `<button data-action="rotate" title="Drehen (R)"><span id="rotate-arrow" class="arrow"></span>Drehen</button>`;
+      html + `<button data-action="rotate" title="Drehen (R)"><span id="rotate-arrow" class="arrow"></span>Drehen</button>` +
+      `<button data-action="menu" title="Spiel speichern/laden"><span class="arrow">≡</span>Menü</button>`;
     this.toolbar.addEventListener("click", (ev) => {
       const btn = (ev.target as HTMLElement).closest("button");
       if (!btn) return;
       if (btn.dataset.tool) this.editor.setTool(btn.dataset.tool as Tool);
       else if (btn.dataset.action === "rotate") this.editor.rotate();
+      else if (btn.dataset.action === "menu") this.onMenu();
     });
   }
 
@@ -138,6 +143,7 @@ export class Ui {
 
   private onKey = (ev: KeyboardEvent) => {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;
+    if ((ev.target as HTMLElement).closest("textarea, input")) return;
     const t = TOOLS.find((x) => x.key === ev.key);
     if (t) this.editor.setTool(t.tool);
     else if (ev.key === "r" || ev.key === "R") this.editor.rotate();

@@ -168,7 +168,68 @@
         flex: 1;
         min-height: 44px;
       }
-      #panel .danger {
+      #menu {
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        width: min(420px, calc(100vw - 24px));
+        padding: 14px 16px;
+        z-index: 10;
+      }
+      #menu .title {
+        font-weight: 600;
+        font-size: 16px;
+        margin-bottom: 6px;
+      }
+      #menu .label {
+        color: var(--muted);
+        margin: 4px 0;
+      }
+      #menu textarea {
+        box-sizing: border-box;
+        width: 100%;
+        height: 88px;
+        margin-top: 8px;
+        padding: 8px;
+        font: 12px ui-monospace, monospace;
+        color: var(--text);
+        background: #0e1116;
+        border: 1px solid #2a3442;
+        border-radius: 8px;
+        resize: none;
+        -webkit-user-select: text;
+        user-select: text;
+        -webkit-touch-callout: default;
+        touch-action: auto;
+        word-break: break-all;
+      }
+      #menu .msg {
+        min-height: 1.45em;
+        margin-top: 4px;
+        color: var(--accent);
+      }
+      #menu .msg.error {
+        color: #f88;
+      }
+      #menu .actions {
+        display: flex;
+        gap: 6px;
+        margin-top: 8px;
+      }
+      #menu .actions > * {
+        flex: 1;
+        min-height: 44px;
+      }
+      #menu .file-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        background: var(--btn);
+        border-radius: 10px;
+        cursor: pointer;
+      }
+      #panel .danger,
+      #menu .danger {
         background: #4a2020;
       }
     </style>
@@ -178,6 +239,7 @@
     <div id="hud" class="overlay"></div>
     <div id="panel" class="overlay" hidden></div>
     <div id="toolbar" class="overlay"></div>
+    <div id="menu" class="overlay" hidden></div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>
