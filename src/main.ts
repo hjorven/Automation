@@ -5,12 +5,16 @@ import { Controls } from "./input/controls";
 import { Camera } from "./render/camera";
 import { WorldView } from "./render/world-view";
 import { TICK_MS } from "./sim/constants";
+import { deserialize, serialize, type SaveData } from "./sim/save";
 import { World } from "./sim/world";
+import { clearAutosave, loadAutosave, writeAutosave, writeEmergency } from "./storage/autosave";
+import { Menu } from "./ui/menu";
 import { Ui } from "./ui/ui";
 
 /** Maximal so viele Ticks pro Frame nachholen (z. B. nach Tab-Wechsel). */
 const MAX_CATCH_UP = 5;
 const UI_INTERVAL_MS = 250;
+const AUTOSAVE_INTERVAL_MS = 15_000;
 
 async function main() {
   const host = document.getElementById("app")!;
@@ -26,7 +30,7 @@ async function main() {
   });
   host.appendChild(app.canvas);
 
-  const world = World.createDefault();
+  const world = await loadWorld();
   const editor = new Editor(world);
   const camera = new Camera(app.screen.width, app.screen.height);
   camera.pos = { x: 0.5, y: 0.5 }; // Hub in die Bildmitte
@@ -34,7 +38,41 @@ async function main() {
   app.stage.addChild(view.container);
 
   new Controls(app.canvas, camera, editor);
-  const ui = new Ui(editor);
+  // Speichern: regelmaessig und sobald Safari die Seite in den Hintergrund legt.
+  let lastSavedAt: number | null = null;
+  let saving = true;
+  const save = async () => {
+    if (!saving) return;
+    try {
+      const data = serialize(world);
+      await writeAutosave(data);
+      lastSavedAt = data.savedAt;
+    } catch (err) {
+      console.warn("Autosave fehlgeschlagen", err);
+    }
+  };
+  const saveNow = () => {
+    if (saving) writeEmergency(serialize(world));
+    void save();
+  };
+  setInterval(save, AUTOSAVE_INTERVAL_MS);
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "hidden") saveNow();
+  });
+  window.addEventListener("pagehide", saveNow);
+
+  const menu = new Menu({
+    snapshot: () => serialize(world),
+    lastSavedAt: () => lastSavedAt,
+    async replace(data: SaveData | null) {
+      // Autosave anhalten, damit der alte Stand den neuen nicht ueberschreibt.
+      saving = false;
+      if (data) await writeAutosave({ ...data, savedAt: Date.now() });
+      else await clearAutosave();
+      location.reload();
+    },
+  });
+  const ui = new Ui(editor, () => (menu.isOpen ? menu.close() : menu.open()));
 
   app.renderer.on("resize", (w: number, h: number) => camera.resize(w, h));
 
@@ -59,6 +97,17 @@ async function main() {
       ui.tick();
     }
   });
+}
+
+/** Letzten Autosave laden; bei Fehlern mit neuer Welt starten. */
+async function loadWorld(): Promise<World> {
+  try {
+    const raw = await loadAutosave();
+    if (raw) return deserialize(raw);
+  } catch (err) {
+    console.warn("Autosave konnte nicht geladen werden", err);
+  }
+  return World.createDefault();
 }
 
 main().catch((err) => {

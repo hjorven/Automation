@@ -313,8 +313,17 @@ Empfehlung: **M0–M5 zuerst komplett lokal** (kein Backend), erst danach Supaba
 | Zoomen | Pinch | Mausrad |
 | Rezept wählen | Hand, Montierer antippen | dito |
 
-### Nächster Schritt: M5 – Speichern
+### Status M5 – Speichern
 
-Auto-Save in IndexedDB (Safari lädt Tabs gern neu – ohne Speichern ist die Fabrik dann weg),
-Export/Import als Code, versioniertes Save-Format.
-Danach M6: Splitter/Zusammenführer, Untergrund-Bänder, Freischaltungen über Aufträge.
+- [x] Versioniertes Save-Format (`src/sim/save.ts`, `SAVE_VERSION`, Migrations-Hook),
+      speichert auch Items auf Bändern und Maschinen-Zustand; Tests prüfen, dass ein
+      geladener Stand exakt gleich weitersimuliert
+- [x] Auto-Save in IndexedDB alle 15 s und beim Verlassen/Ausblenden der Seite,
+      plus synchrone Notfall-Kopie in `localStorage` (beim Neuladen bleibt für IndexedDB keine Zeit)
+- [x] Laden beim Start; kaputte Stände werden übersprungen statt abzustürzen
+- [x] Menü: Export als Code (`AUTO1:` + komprimiertes JSON in Base64) oder als Datei,
+      Import per Code oder Datei, neues Spiel
+
+### Nächster Schritt: M6 – Ausbau
+
+Splitter/Zusammenführer, Untergrund-Bänder, Freischaltungen über Aufträge.
