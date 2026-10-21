@@ -1,21 +1,38 @@
 import type { Editor, Tool } from "../game/editor";
-import { ITEM_COLORS, PALETTE, cssHex } from "../render3d/palette";
+import { ITEM_COLORS, cssHex } from "../render3d/palette";
+import { renderThumbnails } from "../render3d/thumbnails";
 import type { Entity } from "../sim/entities";
 import { GOALS, currentGoalIndex } from "../sim/goals";
 import { ITEM_NAMES, ITEM_ORDER, type ItemId } from "../sim/items";
 import { recipeById, recipesFor, type ItemStack, type Recipe } from "../sim/recipes";
 
-const TOOLS: { tool: Tool; label: string; key: string; color: string }[] = [
-  { tool: "hand", label: "Hand", key: "1", color: "#cfd8e3" },
-  { tool: "belt", label: "Band", key: "2", color: cssHex(PALETTE.beltRail) },
-  { tool: "extractor", label: "Bohrer", key: "3", color: cssHex(PALETTE.extractorBody) },
-  { tool: "smelter", label: "Schmelze", key: "4", color: cssHex(PALETTE.smelter) },
-  { tool: "assembler", label: "Montage", key: "5", color: cssHex(PALETTE.assembler) },
-  { tool: "hub", label: "Hub", key: "6", color: cssHex(PALETTE.hub) },
-  { tool: "delete", label: "Abriss", key: "7", color: "#8a3030" },
+const TOOLS: { tool: Tool; label: string; key: string }[] = [
+  { tool: "hand", label: "Hand", key: "1" },
+  { tool: "belt", label: "Band", key: "2" },
+  { tool: "extractor", label: "Bohrer", key: "3" },
+  { tool: "smelter", label: "Schmelze", key: "4" },
+  { tool: "assembler", label: "Montage", key: "5" },
+  { tool: "hub", label: "Hub", key: "6" },
+  { tool: "delete", label: "Abriss", key: "7" },
 ];
 
-const ARROWS = ["→", "↓", "←", "↑"]; // rechts, unten, links, oben
+/** Strich-Symbole (24er-Raster) fuer Werkzeuge ohne eigenes Modell. */
+const SVG_ICONS = {
+  hand:
+    '<path d="M8 13V6.5a1.5 1.5 0 0 1 3 0V12M11 11V4.5a1.5 1.5 0 0 1 3 0V11M14 11V5.5a1.5 1.5 0 0 1 3 0V12' +
+    'M17 12V8.5a1.5 1.5 0 0 1 3 0V14a7 7 0 0 1-7 7h-1a7 7 0 0 1-5.6-2.8L3.3 15a1.6 1.6 0 0 1 2.5-2L8 15"/>',
+  delete:
+    '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
+  rotate: '<path d="M4 12h14M13 6l6 6-6 6"/>',
+  menu: '<path d="M4 6h16M4 12h16M4 18h16"/>',
+} as const;
+
+function svgIcon(name: keyof typeof SVG_ICONS, extra = ""): string {
+  return (
+    `<svg class="icon" ${extra} viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"` +
+    ` stroke-linecap="round" stroke-linejoin="round">${SVG_ICONS[name]}</svg>`
+  );
+}
 
 const ENTITY_NAMES: Record<Entity["type"], string> = {
   belt: "Förderband",
@@ -59,19 +76,26 @@ export class Ui {
     for (const btn of this.toolbar.querySelectorAll<HTMLButtonElement>("[data-tool]")) {
       btn.classList.toggle("active", btn.dataset.tool === this.editor.tool);
     }
-    byId("rotate-arrow").textContent = ARROWS[this.editor.rotation];
+    // Pfeil zeigt die Baurichtung: 0 = rechts, 1 = unten, 2 = links, 3 = oben.
+    byId("rotate-arrow").style.transform = `rotate(${this.editor.rotation * 90}deg)`;
     this.renderPanel();
   }
 
   private buildToolbar() {
-    const html = TOOLS.map(
-      (t) =>
-        `<button data-tool="${t.tool}" title="${t.label} (${t.key})">` +
-        `<span class="swatch" style="background:${t.color}"></span>${t.label}</button>`,
-    ).join("");
+    const thumbs = renderThumbnails();
+    const html = TOOLS.map((t) => {
+      const thumb = t.tool !== "hand" && t.tool !== "delete" ? thumbs[t.tool] : undefined;
+      const icon = thumb
+        ? `<img class="thumb" src="${thumb}" alt="" draggable="false">`
+        : t.tool === "hand" || t.tool === "delete"
+          ? svgIcon(t.tool, t.tool === "delete" ? 'data-danger=""' : "")
+          : `<span class="icon"></span>`;
+      return `<button data-tool="${t.tool}" title="${t.label} (${t.key})">${icon}${t.label}</button>`;
+    }).join("");
     this.toolbar.innerHTML =
-      html + `<button data-action="rotate" title="Drehen (R)"><span id="rotate-arrow" class="arrow"></span>Drehen</button>` +
-      `<button data-action="menu" title="Spiel speichern/laden"><span class="arrow">≡</span>Menü</button>`;
+      html +
+      `<button data-action="rotate" title="Drehen (R)">${svgIcon("rotate", 'id="rotate-arrow"')}Drehen</button>` +
+      `<button data-action="menu" title="Spiel speichern/laden">${svgIcon("menu")}Menü</button>`;
     this.toolbar.addEventListener("click", (ev) => {
       const btn = (ev.target as HTMLElement).closest("button");
       if (!btn) return;
