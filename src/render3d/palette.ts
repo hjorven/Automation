@@ -39,6 +39,19 @@ export const PALETTE = {
   hubBase: 0x4a4f58,
   beacon: 0x7fd1ff,
   selection: 0x7fd1ff,
+
+  // Details der Gebaeude-Modelle.
+  hazard: 0x23262b,
+  rubber: 0x1f2329,
+  bolt: 0xd6dce4,
+  glass: 0x9fd8f0,
+  brick: 0x9a5a40,
+  brickDark: 0x7d4630,
+  coal: 0x2a2a2e,
+  extractorCap: 0xc2512f,
+  assemblerPanel: 0x5c8cc4,
+  hubTrim: 0xf3dc8a,
+  hubPad: 0x5a616c,
 } as const;
 
 export const cssHex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;
