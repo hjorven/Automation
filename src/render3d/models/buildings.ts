@@ -239,6 +239,9 @@ function limb(p: Paint, a: [number, number], b: [number, number], t: number, col
 
 // ---------------------------------------------------------------- Hub
 
+/** Hoehe des Landedecks; dort parkt der Flieger (scene-view.ts startet ihn von hier). */
+export const HUB_PAD_Y = 0.66;
+
 export function hubModel(): Group {
   const root = new Group();
   const p = new Paint();
@@ -250,40 +253,117 @@ export function hubModel(): Group {
     p.add(boxG(0.16, 0.1, 0.28, 0.36, 0.1, 0).rotateY(a), P.hubTrim);
     p.add(boxG(0.17, 0.02, 0.2, 0.36, 0.2, 0).rotateY(a), P.rubber);
   }
-  // Lager-Turm.
-  p.add(cylG(0.3, 0.38, 0.32, 8, 0, 0.13, 0), P.hub);
-  p.add(cylG(0.32, 0.32, 0.04, 8, 0, 0.3, 0), P.hubTrim);
-  p.add(cylG(0.24, 0.3, 0.12, 8, 0, 0.45, 0), P.hub);
-  p.add(cylG(0.12, 0.16, 0.06, 8, 0, 0.57, 0), P.metalDark);
-  // Antennenmast mit Querstreben.
-  p.add(cylG(0.035, 0.05, 0.62, 6, 0, 0.6, 0), P.metalLight);
-  p.add(boxG(0.3, 0.025, 0.025, 0, 0.98, 0), P.metalLight);
-  p.add(boxG(0.025, 0.025, 0.3, 0, 1.06, 0), P.metalLight);
+  // Lager-Turm, der das Landedeck traegt.
+  p.add(cylG(0.28, 0.36, 0.3, 8, 0, 0.13, 0), P.hub);
+  p.add(cylG(0.3, 0.3, 0.04, 8, 0, 0.29, 0), P.hubTrim);
+  p.add(cylG(0.2, 0.26, 0.2, 8, 0, 0.33, 0), P.hub);
+  for (const [x, z] of [
+    [-0.24, -0.2],
+    [-0.24, 0.2],
+    [0.24, -0.2],
+    [0.24, 0.2],
+  ] as const) {
+    p.add(boxG(0.04, HUB_PAD_Y - 0.13, 0.04, x, 0.13, z), P.metalLight);
+  }
+
+  // Landedeck mit Rand, Mittellinie und Landekreuz.
+  p.add(boxG(0.66, 0.05, 0.5, 0, HUB_PAD_Y - 0.05, 0), P.metalDark);
+  p.add(boxG(0.7, 0.02, 0.04, 0, HUB_PAD_Y - 0.02, -0.25), P.hubTrim);
+  p.add(boxG(0.7, 0.02, 0.04, 0, HUB_PAD_Y - 0.02, 0.25), P.hubTrim);
+  for (let i = -2; i <= 2; i++) p.add(boxG(0.06, 0.004, 0.015, i * 0.12, HUB_PAD_Y, 0), P.hubTrim);
+  p.add(boxG(0.1, 0.004, 0.02, -0.22, HUB_PAD_Y, 0), P.planeAccent);
+  p.add(boxG(0.02, 0.004, 0.1, -0.22, HUB_PAD_Y, 0), P.planeAccent);
+
   // Kleine Kisten auf der Plattform.
-  p.add(boxG(0.12, 0.1, 0.12, 0.29, 0.13, 0.29), P.extractor);
-  p.add(boxG(0.1, 0.08, 0.1, -0.29, 0.13, -0.29), P.assembler);
+  p.add(boxG(0.12, 0.1, 0.12, 0.31, 0.13, 0.31), P.extractor);
+  p.add(boxG(0.1, 0.08, 0.1, -0.31, 0.13, -0.31), P.assembler);
+  // Mast fuer das Leuchtfeuer an der Ecke.
+  p.add(cylG(0.02, 0.03, 0.62, 6, -0.31, 0.13, 0.31), P.metalLight);
   root.add(p.mesh());
 
   const beacon = new MeshStandardMaterial({ color: P.beacon, emissive: P.beacon, emissiveIntensity: 1, flatShading: true });
-  const b = mesh(new SphereGeometry(0.09, 8, 6), beacon, 0, 1.24, 0);
+  const b = mesh(new SphereGeometry(0.06, 8, 6), beacon, -0.31, 0.79, 0.31);
   b.name = "beacon";
   b.castShadow = false;
   root.add(b);
 
-  // Drehender Ring mit Positionslichtern, damit die Drehung sichtbar ist.
+  // Drehender Ring mit Positionslichtern um den Turm.
   const ring = new Group();
   ring.name = "ring";
-  ring.position.set(0, 0.78, 0);
+  ring.position.set(0, 0.42, 0);
   ring.rotation.x = Math.PI / 2;
   const rp = new Paint();
-  rp.add(new TorusGeometry(0.4, 0.03, 6, 24), P.hub);
+  rp.add(new TorusGeometry(0.3, 0.02, 6, 24), P.hub);
   for (let i = 0; i < 4; i++) {
     const a = (i * Math.PI) / 2;
-    const g = new BoxGeometry(0.07, 0.07, 0.07);
-    g.translate(Math.cos(a) * 0.4, Math.sin(a) * 0.4, 0);
+    const g = new BoxGeometry(0.05, 0.05, 0.05);
+    g.translate(Math.cos(a) * 0.3, Math.sin(a) * 0.3, 0);
     rp.add(g, i % 2 ? P.beacon : P.hubTrim);
   }
   ring.add(rp.mesh(paintMetalMat));
   root.add(ring);
+
+  const plane = planeModel();
+  plane.position.set(0, HUB_PAD_Y, 0);
+  plane.scale.setScalar(1.25);
+  root.add(plane);
   return root;
+}
+
+/**
+ * Kleiner Fracht-Flieger, Nase nach +x, Raeder bei y = 0. Name "plane",
+ * Propeller "prop" (dreht um die x-Achse).
+ */
+function planeModel(): Group {
+  const plane = new Group();
+  plane.name = "plane";
+  const p = new Paint();
+  // Rumpf: liegender Zylinder, hinten schlanker.
+  const body = cylG(0.035, 0.055, 0.4, 8, 0, -0.2, 0);
+  body.rotateZ(-Math.PI / 2);
+  body.translate(0, 0.09, 0);
+  p.add(body, P.plane);
+  const nose = coneG(0.055, 0.07, 8, 0, -0.035, 0);
+  nose.rotateZ(-Math.PI / 2);
+  nose.translate(0.235, 0.09, 0);
+  p.add(nose, P.planeAccent);
+  // Streifen und Cockpit.
+  const stripe = cylG(0.057, 0.057, 0.04, 8, 0, -0.02, 0);
+  stripe.rotateZ(-Math.PI / 2);
+  stripe.translate(-0.06, 0.09, 0);
+  p.add(stripe, P.planeAccent);
+  p.add(boxG(0.09, 0.04, 0.07, 0.11, 0.115, 0), P.glass);
+  // Tragflaechen (Hochdecker) mit orangen Spitzen.
+  p.add(boxG(0.13, 0.016, 0.56, 0.04, 0.145, 0), P.plane);
+  p.add(boxG(0.13, 0.017, 0.06, 0.04, 0.145, -0.25), P.planeAccent);
+  p.add(boxG(0.13, 0.017, 0.06, 0.04, 0.145, 0.25), P.planeAccent);
+  for (const z of [-0.14, 0.14]) {
+    const strut = boxG(0.015, 0.09, 0.015, 0, -0.045, 0);
+    strut.rotateX(z > 0 ? -0.6 : 0.6);
+    strut.translate(0.04, 0.11, z * 0.6);
+    p.add(strut, P.metalLight);
+  }
+  // Leitwerk.
+  p.add(boxG(0.08, 0.012, 0.2, -0.17, 0.1, 0), P.plane);
+  p.add(boxG(0.08, 0.1, 0.012, -0.17, 0.1, 0), P.planeAccent);
+  // Fahrwerk.
+  for (const z of [-0.06, 0.06]) {
+    p.add(boxG(0.012, 0.05, 0.012, 0.08, 0.02, z), P.metalDark);
+    const wheel = cylG(0.022, 0.022, 0.015, 8, 0, -0.0075, 0);
+    wheel.rotateX(Math.PI / 2);
+    wheel.translate(0.08, 0.022, z);
+    p.add(wheel, P.rubber);
+  }
+  p.add(boxG(0.012, 0.04, 0.012, -0.18, 0.02, 0), P.metalDark);
+  plane.add(p.mesh());
+
+  const prop = new Group();
+  prop.name = "prop";
+  prop.position.set(0.275, 0.09, 0);
+  const pp = new Paint();
+  pp.add(boxG(0.01, 0.2, 0.025, 0, -0.1, 0), P.metalDark);
+  pp.add(boxG(0.01, 0.025, 0.2, 0, -0.0125, 0), P.metalDark);
+  prop.add(pp.mesh());
+  plane.add(prop);
+  return plane;
 }

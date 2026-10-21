@@ -26,6 +26,7 @@ import type { World } from "../sim/world";
 import type { CameraRig } from "./camera-rig";
 import {
   BELT_TOP,
+  HUB_PAD_Y,
   assemblerModel,
   createBeltTexture,
   curveBedGeometry,
@@ -111,6 +112,9 @@ export class SceneView {
   private readonly nodes = new Map<number, EntityNode>();
   private readonly templates = new Map<string, Group>();
   private worldVersion = -1;
+  /** Hub-Stufe beim letzten Bild; steigt sie, startet der Flieger. */
+  private lastTier = -1;
+  private flightStart = -Infinity;
 
   private readonly beltTexture = createBeltTexture();
   private readonly beltBeds: GrowingInstances[];
@@ -167,6 +171,11 @@ export class SceneView {
   render(world: World, rig: CameraRig, alpha: number, dt: number, selectedId: number | null) {
     const t = performance.now() / 1000;
     this.followCamera(rig);
+
+    if (world.tier !== this.lastTier) {
+      if (this.lastTier !== -1 && world.tier > this.lastTier) this.flightStart = t;
+      this.lastTier = world.tier;
+    }
 
     if (world.version !== this.worldVersion) {
       this.worldVersion = world.version;
@@ -342,6 +351,9 @@ export class SceneView {
         case "hub": {
           root.getObjectByName("ring")!.rotation.z = t * 0.8;
           node.own[0].emissiveIntensity = 0.8 + 0.6 * Math.sin(t * 3);
+          const flying = flyPlane(root.getObjectByName("plane")!, t - this.flightStart);
+          node.spin += ((flying ? 45 : 0) - node.spin) * Math.min(1, dt * 2);
+          root.getObjectByName("prop")!.rotation.x += node.spin * dt;
           break;
         }
       }
@@ -380,6 +392,44 @@ export class SceneView {
 }
 
 // ------------------------------------------------------------ Hilfen
+
+/** Dauer des Hub-Flugs in Sekunden: anlassen, starten, weg, zurueck, landen. */
+const FLIGHT = 11;
+
+/**
+ * Flieger auf dem Hub nach einem Upgrade (wie die Fracht-Lieferung in
+ * Satisfactory): rollt los, steigt in die Ferne, kommt von der anderen Seite
+ * zurueck und landet. `s` = Sekunden seit dem Upgrade. Liefert true, solange
+ * der Motor laeuft.
+ */
+function flyPlane(plane: Object3D, s: number): boolean {
+  plane.visible = true;
+  plane.position.set(0, HUB_PAD_Y, 0);
+  plane.rotation.set(0, 0, 0);
+  if (s < 0 || s >= FLIGHT) return false;
+  if (s < 1) return true; // Motor anlassen
+
+  if (s < 5) {
+    const u = (s - 1) / 4;
+    const x = 36 * u * u;
+    const air = Math.max(0, x - 0.5);
+    plane.position.set(x, HUB_PAD_Y + air * 0.32, 0);
+    plane.rotation.z = Math.min(1, air / 0.6) * 0.32;
+    plane.rotation.x = Math.sin(u * Math.PI) * 0.15;
+    return true;
+  }
+  if (s < 6.5) {
+    plane.visible = false; // unterwegs
+    return true;
+  }
+  const w = 1 - (s - 6.5) / (FLIGHT - 6.5);
+  const x = -36 * w * w;
+  const air = Math.max(0, -x - 0.4);
+  plane.position.set(x, HUB_PAD_Y + air * 0.28, 0);
+  plane.rotation.z = -Math.min(1, air / 0.6) * 0.12;
+  plane.rotation.x = -Math.sin(w * Math.PI) * 0.12;
+  return true;
+}
 
 /** Modelle zeigen nach +x; Sim-Richtung `dir` als Drehung um die Hochachse. */
 const yawOf = (d: Dir) => (-d * Math.PI) / 2;
