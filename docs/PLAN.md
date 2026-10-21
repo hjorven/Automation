@@ -80,9 +80,9 @@ Form Y"), die nach und nach neue Gebäude und Mechaniken freischalten.
 
 - **Sprache:** TypeScript
 - **Build:** `Vite` (erzeugt rein statische Dateien -> ideal für GitHub Pages)
-- **Rendering:** `PixiJS v8` (WebGL). Begründung: Bei einem Automatisierungsspiel
-  sind schnell tausende bewegte Items auf dem Schirm. WebGL-Batching schafft das auf
-  dem iPad flüssig; reines Canvas-2D wird dort zu langsam.
+- **Rendering:** `Three.js` (WebGL, 3D) seit dem 3D-Umbau, vorher `PixiJS v8` (2D).
+  Prozedurale Low-Poly-Modelle, Bänder und Items als `InstancedMesh`, damit auch
+  tausende bewegte Items auf dem iPad flüssig bleiben.
 - **State:** eigener, schlanker Simulations-Kern (kein schweres Framework nötig).
   Optional `zustand` nur für UI-State.
 - **UI-Overlay:** schlichtes HTML/CSS über dem Canvas (Bau-Menü, Dialoge).
@@ -99,7 +99,7 @@ Form Y"), die nach und nach neue Gebäude und Mechaniken freischalten.
 [ Input (Touch) ] -> [ Command Queue ] -> [ Simulation (fixed tick) ] -> [ World State ]
                                                                               |
                                                                               v
-                                                     [ Renderer (PixiJS, 60 FPS) ]
+                                                     [ Renderer (Three.js, 60 FPS) ]
 ```
 
 ### Datenmodell (Kern, vereinfacht)
@@ -228,9 +228,11 @@ automation/
       tick.ts
       buildings/
       items.ts
-    render/                # PixiJS-Rendering
-      renderer.ts
-      sprites.ts
+    render3d/              # Three.js-Rendering
+      scene-view.ts        # Szene, Licht, Gebaeude, Items
+      models.ts            # prozedurale Low-Poly-Modelle
+      camera-rig.ts        # Orbit-Kamera, Bildschirm -> Gitterfeld
+      terrain.ts           # Boden und Erz in Chunks
     input/                 # Touch-/Maus-Eingabe
       controls.ts
     ui/                    # HTML/CSS-Overlay (Bau-Menü etc.)
@@ -311,6 +313,7 @@ Empfehlung: **M0–M5 zuerst komplett lokal** (kein Backend), erst danach Supaba
 | Gebäude drehen | Gleiches Werkzeug, Gebäude antippen | `R` vor dem Bauen |
 | Verschieben | Zwei Finger (oder Hand-Werkzeug) | Rechte Taste ziehen |
 | Zoomen | Pinch | Mausrad |
+| Kamera drehen | Zwei Finger verdrehen | `Q` / `E` |
 | Rezept wählen | Hand, Montierer antippen | dito |
 
 ### Status M5 – Speichern
@@ -323,6 +326,18 @@ Empfehlung: **M0–M5 zuerst komplett lokal** (kein Backend), erst danach Supaba
 - [x] Laden beim Start; kaputte Stände werden übersprungen statt abzustürzen
 - [x] Menü: Export als Code (`AUTO1:` + komprimiertes JSON in Base64) oder als Datei,
       Import per Code oder Datei, neues Spiel
+
+### Status 3D-Umbau
+
+- [x] Darstellung von PixiJS (2D) auf Three.js (3D) umgestellt; Simulation, Editor,
+      UI und Spielstände bleiben unverändert und kompatibel
+- [x] Low-Poly-Modelle aus Code (keine Asset-Dateien): Bänder mit Kurven und
+      laufender Textur, Bohrer mit drehendem Kopf, Schmelze mit Glut und Rauch,
+      Montierer mit Greifarm und schwebendem Rezept-Symbol, Hub mit Ring und Leuchtfeuer
+- [x] Orbit-Kamera mit Schatten und Nebel; Pinch zoomt, Verdrehen dreht, Neigung
+      passt sich dem Zoom an
+- [ ] Offen: Bau-Vorschau (Geist-Modell), Fortschrittsanzeigen über Maschinen,
+      Performance-Test auf dem iPad mit großer Fabrik
 
 ### Nächster Schritt: M6 – Ausbau
 
