@@ -271,10 +271,25 @@ Empfehlung: **M0–M5 zuerst komplett lokal** (kein Backend), erst danach Supaba
 
 ---
 
-## 11. Offene Entscheidungen (brauche deine Richtung)
+## 11. Getroffene Entscheidungen
 
-1. **Grafikstil:** minimalistisch-geometrisch (wie Shapez) oder etwas detaillierter?
-2. **Erste konkrete Gebäude/Items:** Formen schneiden/färben (Shapez-Linie) oder eher
-   Rohstoff-Rezepte (Factorio-Linie) als Kern?
-3. **Supabase von Anfang an** einplanen oder bewusst erst nach dem lokalen MVP?
-4. Soll ich direkt mit **M0 (Projekt-Setup + GitHub-Pages-Deploy)** loslegen?
+1. **Spielkern:** Factorio-Linie – Rohstoffe über Maschinen-**Rezepte** zu
+   Zwischen- und Endprodukten verarbeiten.
+2. **Grafikstil:** minimalistisch-geometrisch (schlichte Formen/Farben).
+3. **Supabase:** erst nach dem komplett lokal spielbaren MVP (M0–M5).
+4. **M0 gestartet:** Vite + TypeScript + PixiJS, gerendertes Gitter mit Touch-Pan/Zoom,
+   GitHub-Pages-Deploy-Workflow.
+
+### Status M0
+
+- [x] Projektgerüst (`Vite`, `TypeScript`, `PixiJS v8`)
+- [x] Unendliches Gitter mit Culling, Ursprungs-Zelle markiert
+- [x] Kamera + Touch-Steuerung (Pan, Pinch-Zoom, Mausrad)
+- [x] Build grün (`npm run build`)
+- [x] Deploy-Workflow (`.github/workflows/deploy.yml`)
+- [ ] GitHub Pages aktivieren (Repo-Settings) + nach `main` mergen
+
+### Nächster Schritt: M1/M3
+
+Datenmodell für rezeptbasierte Gebäude (Extraktor, Band, Maschine mit Rezept, Hub),
+Fixed-Tick-Simulation und Item-Fluss über Bänder.

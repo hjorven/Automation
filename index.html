@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="de">
+  <head>
+    <meta charset="UTF-8" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover"
+    />
+    <title>Automation</title>
+    <style>
+      :root {
+        color-scheme: dark;
+      }
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        height: 100%;
+        overflow: hidden;
+        background: #0e1116;
+        /* Safari: kein Doppel-Tipp-Zoom, kein Pull-to-Refresh, kein Scroll */
+        touch-action: none;
+        overscroll-behavior: none;
+        -webkit-user-select: none;
+        user-select: none;
+        -webkit-touch-callout: none;
+        font-family: system-ui, -apple-system, sans-serif;
+      }
+      #app {
+        position: fixed;
+        inset: 0;
+      }
+      #app canvas {
+        display: block;
+        width: 100%;
+        height: 100%;
+      }
+      #hud {
+        position: fixed;
+        top: max(12px, env(safe-area-inset-top));
+        left: max(12px, env(safe-area-inset-left));
+        padding: 8px 12px;
+        border-radius: 10px;
+        background: rgba(20, 26, 34, 0.75);
+        color: #cfd8e3;
+        font-size: 13px;
+        line-height: 1.4;
+        pointer-events: none;
+        backdrop-filter: blur(6px);
+      }
+      #hud b {
+        color: #7fd1ff;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app"></div>
+    <div id="hud">
+      <b>Automation</b> – M0<br />
+      Ziehen: bewegen · Pinch/Scroll: zoomen
+    </div>
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
