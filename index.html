@@ -139,18 +139,14 @@
         gap: 4px;
         font-size: 12px;
       }
-      #toolbar .swatch {
-        width: 18px;
-        height: 18px;
-        border-radius: 5px;
+      #toolbar .thumb {
+        width: 40px;
+        height: 40px;
+        margin: -4px 0 -2px;
+        display: block;
+        pointer-events: none;
+        -webkit-user-drag: none;
       }
-      #toolbar .arrow {
-        display: inline-block;
-        font-size: 18px;
-        line-height: 18px;
-        color: var(--accent);
-      }
-
       #panel {
         top: max(12px, env(safe-area-inset-top));
         right: max(12px, env(safe-area-inset-right));

@@ -1,31 +1,30 @@
 import type { Editor, Tool } from "../game/editor";
-import { ITEM_COLORS, PALETTE, cssHex } from "../render3d/palette";
+import { ITEM_COLORS, cssHex } from "../render3d/palette";
+import { renderThumbnails, type ThumbnailId } from "../render3d/thumbnails";
 import type { Entity } from "../sim/entities";
 import { ITEM_NAMES, ITEM_ORDER, type ItemId } from "../sim/items";
 import { MAX_TIER, TIERS, buildCost } from "../sim/progression";
 import { recipeById, recipesFor, type ItemStack, type Recipe } from "../sim/recipes";
 import type { World } from "../sim/world";
 
-const TOOLS: { tool: Tool; label: string; key: string; color: string }[] = [
-  { tool: "hand", label: "Hand", key: "1", color: "#cfd8e3" },
-  { tool: "belt", label: "Band", key: "2", color: cssHex(PALETTE.beltRail) },
-  { tool: "extractor", label: "Bohrer", key: "3", color: cssHex(PALETTE.extractorBody) },
-  { tool: "smelter", label: "Schmelze", key: "4", color: cssHex(PALETTE.smelter) },
-  { tool: "assembler", label: "Montage", key: "5", color: cssHex(PALETTE.assembler) },
-  { tool: "hub", label: "Hub", key: "6", color: cssHex(PALETTE.hub) },
-  { tool: "splitter", label: "Verteiler", key: "7", color: cssHex(PALETTE.splitter) },
-  { tool: "merger", label: "Zusammenführer", key: "8", color: cssHex(PALETTE.merger) },
-  { tool: "tunnel", label: "Tunnel", key: "9", color: cssHex(PALETTE.tunnel) },
-  { tool: "foundry", label: "Gießerei", key: "0", color: cssHex(PALETTE.foundry) },
-  { tool: "extractor_mk2", label: "Bohrer Mk2", key: "b", color: cssHex(PALETTE.extractorMk2) },
-  { tool: "delete", label: "Abriss", key: "x", color: "#8a3030" },
+const TOOLS: { tool: Tool; label: string; key: string }[] = [
+  { tool: "hand", label: "Hand", key: "1" },
+  { tool: "belt", label: "Band", key: "2" },
+  { tool: "extractor", label: "Bohrer", key: "3" },
+  { tool: "smelter", label: "Schmelze", key: "4" },
+  { tool: "assembler", label: "Montage", key: "5" },
+  { tool: "hub", label: "Hub", key: "6" },
+  { tool: "splitter", label: "Verteiler", key: "7" },
+  { tool: "merger", label: "Zusammenführer", key: "8" },
+  { tool: "tunnel", label: "Tunnel", key: "9" },
+  { tool: "foundry", label: "Gießerei", key: "0" },
+  { tool: "extractor_mk2", label: "Bohrer Mk2", key: "b" },
+  { tool: "delete", label: "Abriss", key: "x" },
 ];
 
 /** Wie lange Hinweise im HUD stehen bleiben. */
 const NOTICE_MS = 2500;
 const TIER_NOTICE_MS = 6000;
-
-const ARROWS = ["→", "↓", "←", "↑"]; // rechts, unten, links, oben
 
 const ENTITY_NAMES: Record<Entity["type"], string> = {
   belt: "Förderband",
@@ -48,6 +47,8 @@ export class Ui {
   private hudKey = "";
   private tier: number;
   private tierReachedAt = -Infinity;
+  /** Einmal gerenderte Bilder der Modelle fuer die Werkzeugleiste. */
+  private readonly thumbs = renderThumbnails();
 
   constructor(
     private readonly editor: Editor,
@@ -91,19 +92,26 @@ export class Ui {
       const tool = btn.dataset.tool as Tool;
       btn.hidden = tool !== "hand" && tool !== "delete" && !w.isUnlocked(tool);
     }
-    byId("rotate-arrow").textContent = ARROWS[this.editor.rotation];
+    // Pfeil zeigt die Baurichtung (je Richtung ein eigenes Bild).
+    const arrow = this.thumbs[`rotate${this.editor.rotation}` as ThumbnailId];
+    const img = document.getElementById("rotate-arrow");
+    if (arrow && img instanceof HTMLImageElement) img.src = arrow;
     this.renderPanel();
   }
 
   private buildToolbar() {
+    const thumbs = this.thumbs;
+    const icon = (id: ThumbnailId, attrs = "") =>
+      thumbs[id]
+        ? `<img class="thumb" ${attrs} src="${thumbs[id]}" alt="" draggable="false">`
+        : `<span class="thumb" ${attrs}></span>`;
     const html = TOOLS.map(
-      (t) =>
-        `<button data-tool="${t.tool}" title="${t.label} (${t.key})">` +
-        `<span class="swatch" style="background:${t.color}"></span>${t.label}</button>`,
+      (t) => `<button data-tool="${t.tool}" title="${t.label} (${t.key})">${icon(t.tool)}${t.label}</button>`,
     ).join("");
     this.toolbar.innerHTML =
-      html + `<button data-action="rotate" title="Drehen (R)"><span id="rotate-arrow" class="arrow"></span>Drehen</button>` +
-      `<button data-action="menu" title="Spiel speichern/laden"><span class="arrow">≡</span>Menü</button>`;
+      html +
+      `<button data-action="rotate" title="Drehen (R)">${icon("rotate0", 'id="rotate-arrow"')}Drehen</button>` +
+      `<button data-action="menu" title="Spiel speichern/laden">${icon("menu")}Menü</button>`;
     this.toolbar.addEventListener("click", (ev) => {
       const btn = (ev.target as HTMLElement).closest("button");
       if (!btn) return;
