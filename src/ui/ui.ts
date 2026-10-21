@@ -1,5 +1,6 @@
 import type { Editor, Tool } from "../game/editor";
 import { ITEM_COLORS, cssHex } from "../render3d/palette";
+import { ICON_STYLES, type IconStyle } from "../render3d/models";
 import { renderThumbnails, type ThumbnailId } from "../render3d/thumbnails";
 import type { Entity } from "../sim/entities";
 import { GOALS, currentGoalIndex } from "../sim/goals";
@@ -30,6 +31,8 @@ export class Ui {
   private readonly hud = byId("hud");
   private readonly panel = byId("panel");
   private hudVersion = -1;
+  // Symbol-Stil per URL waehlbar (?icons=A..D), bis die Wahl feststeht.
+  private readonly thumbs = renderThumbnails(iconStyleFromUrl());
 
   constructor(
     private readonly editor: Editor,
@@ -58,13 +61,15 @@ export class Ui {
     for (const btn of this.toolbar.querySelectorAll<HTMLButtonElement>("[data-tool]")) {
       btn.classList.toggle("active", btn.dataset.tool === this.editor.tool);
     }
-    // Pfeil zeigt die Baurichtung: 0 = rechts, 1 = unten, 2 = links, 3 = oben.
-    byId("rotate-arrow").style.transform = `rotate(${this.editor.rotation * 90}deg)`;
+    // Pfeil zeigt die Baurichtung (je Richtung ein eigenes Bild).
+    const arrow = this.thumbs[`rotate${this.editor.rotation}` as ThumbnailId];
+    const img = document.getElementById("rotate-arrow");
+    if (arrow && img instanceof HTMLImageElement) img.src = arrow;
     this.renderPanel();
   }
 
   private buildToolbar() {
-    const thumbs = renderThumbnails();
+    const thumbs = this.thumbs;
     const icon = (id: ThumbnailId, attrs = "") =>
       thumbs[id]
         ? `<img class="thumb" ${attrs} src="${thumbs[id]}" alt="" draggable="false">`
@@ -74,7 +79,7 @@ export class Ui {
     ).join("");
     this.toolbar.innerHTML =
       html +
-      `<button data-action="rotate" title="Drehen (R)">${icon("rotate", 'id="rotate-arrow"')}Drehen</button>` +
+      `<button data-action="rotate" title="Drehen (R)">${icon("rotate0", 'id="rotate-arrow"')}Drehen</button>` +
       `<button data-action="menu" title="Spiel speichern/laden">${icon("menu")}Menü</button>`;
     this.toolbar.addEventListener("click", (ev) => {
       const btn = (ev.target as HTMLElement).closest("button");
@@ -193,6 +198,11 @@ function itemLabel(i: ItemId): string {
 
 function dot(i: ItemId): string {
   return `<span class="dot" style="background:${cssHex(ITEM_COLORS[i])}"></span>`;
+}
+
+function iconStyleFromUrl(): IconStyle {
+  const s = new URLSearchParams(location.search).get("icons")?.toUpperCase();
+  return (ICON_STYLES as readonly string[]).includes(s ?? "") ? (s as IconStyle) : "A";
 }
 
 function byId(id: string): HTMLElement {
