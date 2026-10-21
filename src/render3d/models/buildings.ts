@@ -22,7 +22,7 @@ import { Paint, boxG, coneG, cylG, mesh, paintMetalMat } from "./kit";
 // "glow", "beacon", "puff".
 
 /** Pfeil am Ausgang (+x) als Teil der statischen Geometrie. */
-function outputArrow(p: Paint, y: number, x = 0.45) {
+export function outputArrow(p: Paint, y: number, x = 0.45) {
   const g = coneG(0.085, 0.16, 3, 0, -0.08, 0);
   g.rotateZ(-Math.PI / 2);
   g.translate(x, y, 0);
@@ -30,7 +30,7 @@ function outputArrow(p: Paint, y: number, x = 0.45) {
 }
 
 /** Bodenplatte mit Warnstreifen an den Kanten. */
-function basePlate(p: Paint, size: number, h: number, color: number) {
+export function basePlate(p: Paint, size: number, h: number, color: number) {
   p.add(boxG(size, h, size), color);
   const stripe = 0.035;
   for (let i = -3; i <= 3; i++) {
@@ -41,7 +41,7 @@ function basePlate(p: Paint, size: number, h: number, color: number) {
   }
 }
 
-function bolts(p: Paint, xs: number[], zs: number[], y: number) {
+export function bolts(p: Paint, xs: number[], zs: number[], y: number) {
   for (const x of xs) for (const z of zs) p.add(cylG(0.022, 0.022, 0.02, 6, x, y, z), P.bolt);
 }
 
@@ -50,14 +50,20 @@ function bolts(p: Paint, xs: number[], zs: number[], y: number) {
 /** Hoehe, auf der scene-view den Bohrkopf platziert. */
 const HEAD_Y = 0.56;
 
-export function extractorModel(): Group {
+export interface ExtractorColors {
+  frame: number;
+  body: number;
+  cap: number;
+}
+
+export function extractorModel(c: ExtractorColors = { frame: P.extractor, body: P.extractorBody, cap: P.extractorCap }): Group {
   const root = new Group();
   const p = new Paint();
   basePlate(p, 0.9, 0.1, P.metalDark);
   bolts(p, [-0.38, 0.38], [-0.38, 0.38], 0.1);
 
   // Gehaeuse mit Wartungsklappe und Lueftungsschlitzen.
-  p.add(boxG(0.56, 0.36, 0.56, -0.04, 0.1, 0), P.extractorBody);
+  p.add(boxG(0.56, 0.36, 0.56, -0.04, 0.1, 0), c.body);
   p.add(boxG(0.6, 0.04, 0.6, -0.04, 0.46, 0), P.metal);
   p.add(boxG(0.02, 0.18, 0.22, -0.33, 0.16, 0), P.metal);
   for (let i = 0; i < 3; i++) p.add(boxG(0.3, 0.025, 0.02, -0.06, 0.2 + i * 0.07, 0.285), P.hazard);
@@ -70,15 +76,15 @@ export function extractorModel(): Group {
     [0.28, -0.34],
     [0.28, 0.34],
   ];
-  for (const [x, z] of posts) p.add(boxG(0.08, 0.84, 0.08, x, 0.1, z), P.extractor);
-  for (const z of [-0.34, 0.34]) p.add(boxG(0.72, 0.06, 0.06, -0.04, 0.88, z), P.extractor);
-  for (const x of [-0.36, 0.28]) p.add(boxG(0.06, 0.06, 0.74, x, 0.88, 0), P.extractor);
+  for (const [x, z] of posts) p.add(boxG(0.08, 0.84, 0.08, x, 0.1, z), c.frame);
+  for (const z of [-0.34, 0.34]) p.add(boxG(0.72, 0.06, 0.06, -0.04, 0.88, z), c.frame);
+  for (const x of [-0.36, 0.28]) p.add(boxG(0.06, 0.06, 0.74, x, 0.88, 0), c.frame);
   // Diagonale Streben an den Seiten.
   for (const z of [-0.34, 0.34]) {
     const g = boxG(0.04, 0.7, 0.04, 0, -0.35, 0);
     g.rotateZ(0.72);
     g.translate(-0.04, 0.6, z);
-    p.add(g, P.extractor);
+    p.add(g, c.frame);
   }
 
   // Auswurf-Rutsche zum Band.
@@ -103,9 +109,9 @@ export function extractorModel(): Group {
   for (let i = 0; i < 3; i++) {
     const fin = boxG(0.2, 0.05, 0.07, 0.12, 0.06, 0);
     fin.rotateY((i * Math.PI * 2) / 3);
-    hp.add(fin, P.extractor);
+    hp.add(fin, c.frame);
   }
-  hp.add(coneG(0.07, 0.18, 6, 0, 0.11, 0), P.extractorCap);
+  hp.add(coneG(0.07, 0.18, 6, 0, 0.11, 0), c.cap);
   head.add(hp.mesh(paintMetalMat));
   root.add(head);
   return root;
