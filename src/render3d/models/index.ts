@@ -12,3 +12,4 @@ export {
 } from "./belts";
 export { assemblerModel, extractorModel, hubModel, smelterModel } from "./buildings";
 export { itemGeometry, itemMaterial } from "./items";
+export { deleteIconModel, handIconModel, menuIconModel, rotateIconModel } from "./icons";

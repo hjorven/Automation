@@ -126,21 +126,12 @@
         width: 40px;
         height: 40px;
         margin: -4px 0 -2px;
+        display: block;
         pointer-events: none;
         -webkit-user-drag: none;
       }
-      #toolbar .icon {
-        width: 26px;
-        height: 26px;
-        margin: 3px 0 4px;
-        color: var(--text);
-        transition: transform 0.15s ease;
-      }
-      #toolbar .icon[data-danger] {
-        color: #ff8a80;
-      }
       #toolbar #rotate-arrow {
-        color: var(--accent);
+        transition: transform 0.15s ease;
       }
       #panel {
         top: max(12px, env(safe-area-inset-top));

@@ -15,9 +15,13 @@ import type { EntityType } from "../sim/entities";
 import {
   assemblerModel,
   createBeltTexture,
+  deleteIconModel,
   extractorModel,
+  handIconModel,
   hubModel,
   mat,
+  menuIconModel,
+  rotateIconModel,
   smelterModel,
   straightBedGeometry,
   straightFrameGeometry,
@@ -26,13 +30,15 @@ import { PALETTE } from "./palette";
 
 const SIZE = 128;
 
+export type ThumbnailId = EntityType | "hand" | "delete" | "rotate" | "menu";
+
 /**
  * Rendert jedes Gebaeude-Modell einmal als kleines Bild (Data-URL) fuer die
  * Werkzeugleiste. Nutzt einen kurzlebigen eigenen Renderer, der danach wieder
  * freigegeben wird. Gibt ein leeres Objekt zurueck, wenn WebGL fehlt.
  */
-export function renderThumbnails(): Partial<Record<EntityType, string>> {
-  const out: Partial<Record<EntityType, string>> = {};
+export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
+  const out: Partial<Record<ThumbnailId, string>> = {};
   let renderer: WebGLRenderer;
   try {
     renderer = new WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
@@ -53,11 +59,13 @@ export function renderThumbnails(): Partial<Record<EntityType, string>> {
 
   // Leicht von oben und schraeg vorne, Ausgang (+x) zeigt nach rechts unten.
   const cam = new OrthographicCamera(-0.75, 0.75, 0.75, -0.75, 0.1, 20);
-  cam.position.set(2.2, 2.1, 3.2);
-  cam.lookAt(0, 0.38, 0);
 
   const beltTex = createBeltTexture();
-  const builders: [EntityType, () => Object3D][] = [
+  const builders: [ThumbnailId, () => Object3D][] = [
+    ["hand", handIconModel],
+    ["delete", deleteIconModel],
+    ["rotate", rotateIconModel],
+    ["menu", menuIconModel],
     ["belt", () => beltModel(beltTex)],
     ["extractor", extractorModel],
     ["smelter", smelterModel],
@@ -68,6 +76,15 @@ export function renderThumbnails(): Partial<Record<EntityType, string>> {
     const model = build();
     // Hub ist hoeher als die anderen Gebaeude: etwas weiter herauszoomen.
     cam.zoom = type === "hub" ? 0.82 : type === "belt" ? 1.15 : 1;
+    // Der Drehen-Pfeil wird per CSS gedreht und muss daher genau von oben kommen.
+    if (type === "rotate") {
+      cam.position.set(0, 5, 0.6);
+      cam.lookAt(0, 0, 0);
+      cam.zoom = 1.25;
+    } else {
+      cam.position.set(2.2, 2.1, 3.2);
+      cam.lookAt(0, 0.38, 0);
+    }
     cam.updateProjectionMatrix();
     model.traverse((o) => {
       // Glut und Leuchtfeuer sichtbar machen, Rauch ausblenden.
