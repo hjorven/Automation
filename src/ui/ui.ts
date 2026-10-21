@@ -1,6 +1,5 @@
 import type { Editor, Tool } from "../game/editor";
 import { ITEM_COLORS, cssHex } from "../render3d/palette";
-import { ICON_STYLES, type IconStyle } from "../render3d/models";
 import { renderThumbnails, type ThumbnailId } from "../render3d/thumbnails";
 import type { Entity } from "../sim/entities";
 import { GOALS, currentGoalIndex } from "../sim/goals";
@@ -31,8 +30,8 @@ export class Ui {
   private readonly hud = byId("hud");
   private readonly panel = byId("panel");
   private hudVersion = -1;
-  // Symbol-Stil per URL waehlbar (?icons=A..D), bis die Wahl feststeht.
-  private readonly thumbs = renderThumbnails(iconStyleFromUrl());
+  /** Einmal gerenderte Bilder der Modelle fuer die Werkzeugleiste. */
+  private readonly thumbs = renderThumbnails();
 
   constructor(
     private readonly editor: Editor,
@@ -198,11 +197,6 @@ function itemLabel(i: ItemId): string {
 
 function dot(i: ItemId): string {
   return `<span class="dot" style="background:${cssHex(ITEM_COLORS[i])}"></span>`;
-}
-
-function iconStyleFromUrl(): IconStyle {
-  const s = new URLSearchParams(location.search).get("icons")?.toUpperCase();
-  return (ICON_STYLES as readonly string[]).includes(s ?? "") ? (s as IconStyle) : "A";
 }
 
 function byId(id: string): HTMLElement {

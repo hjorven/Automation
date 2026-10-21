@@ -12,4 +12,4 @@ export {
 } from "./belts";
 export { assemblerModel, extractorModel, hubModel, smelterModel } from "./buildings";
 export { itemGeometry, itemMaterial } from "./items";
-export { ICON_STYLES, iconModel, type IconStyle, type IconTool } from "./icons";
+export { iconModel, type IconTool } from "./icons";

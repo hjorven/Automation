@@ -1,87 +1,30 @@
 import { ExtrudeGeometry, Group, Shape, type BufferGeometry } from "three";
 import { PALETTE as P } from "../palette";
-import { Paint, boxG, cylG, paintMetalMat } from "./kit";
+import { Paint, boxG, cylG } from "./kit";
 
-// Symbole fuer Werkzeuge ohne Gebaeude (Hand, Abriss, Drehen, Menue), nur fuer
-// die Werkzeugleiste. Mehrere Stil-Varianten zur Auswahl.
+// Werkzeuge ohne Gebaeude (Hand, Abriss, Drehen, Menue) als kleine Objekte auf
+// der Bodenplatte der Gebaeude: Greifer, Dynamit, Drehteller, Steuerpult.
+// Nur fuer die Werkzeugleiste.
 
 export type IconTool = "hand" | "delete" | "rotate" | "menu";
-/**
- * A: Plakette (Metallplatte mit Warnstreifen, gelbes Relief-Symbol, schraeg)
- * B: Signalschild (rundes Industrieschild auf Pfosten)
- * C: Kachel (wie A, aber genau von oben: flach und klar)
- * D: Werkzeug (Greifer, Dynamit, Drehteller, Terminal auf Bodenplatte)
- */
-export type IconStyle = "A" | "B" | "C" | "D";
-export const ICON_STYLES: readonly IconStyle[] = ["A", "B", "C", "D"];
 
-// ---------------------------------------------------------------- Symbole (2D)
-// Umrisse in der x-y-Ebene, etwa im Bereich -0.4..0.4.
-
-function rect(x: number, y: number, w: number, h: number): Shape {
+/** Pfeil nach +x als Relief (Unterkante y = 0), gedreht wie die Sim-Richtung `dir`. */
+function arrowSolid(depth: number, dir: number): BufferGeometry {
   const s = new Shape();
-  s.moveTo(x, y);
-  s.lineTo(x + w, y);
-  s.lineTo(x + w, y + h);
-  s.lineTo(x, y + h);
+  s.moveTo(-0.38, -0.09);
+  s.lineTo(0.04, -0.09);
+  s.lineTo(0.04, -0.24);
+  s.lineTo(0.38, 0);
+  s.lineTo(0.04, 0.24);
+  s.lineTo(0.04, 0.09);
+  s.lineTo(-0.38, 0.09);
   s.closePath();
-  return s;
+  const g = new ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.012, bevelSegments: 1 });
+  g.rotateX(-Math.PI / 2);
+  // dir 0 = +x, 1 = +z (Bildschirm unten), ... wie bei den Gebaeuden.
+  g.rotateY((-dir * Math.PI) / 2);
+  return g;
 }
-
-function rotated(shape: Shape, a: number, cx: number, cy: number): Shape {
-  const pts = shape.getPoints().map((p) => {
-    const x = p.x - cx;
-    const y = p.y - cy;
-    return [cx + x * Math.cos(a) - y * Math.sin(a), cy + x * Math.sin(a) + y * Math.cos(a)] as const;
-  });
-  const s = new Shape();
-  pts.forEach(([x, y], i) => (i ? s.lineTo(x, y) : s.moveTo(x, y)));
-  s.closePath();
-  return s;
-}
-
-function glyph(tool: IconTool): Shape[] {
-  switch (tool) {
-    case "hand":
-      return [
-        rect(-0.2, -0.38, 0.38, 0.4),
-        rect(-0.2, 0.0, 0.085, 0.3),
-        rect(-0.1, 0.0, 0.085, 0.38),
-        rect(0.0, 0.0, 0.085, 0.36),
-        rect(0.1, 0.0, 0.08, 0.28),
-        rotated(rect(0.14, -0.2, 0.2, 0.09), 0.6, 0.16, -0.16),
-      ];
-    case "delete":
-      return [rotated(rect(-0.32, 0.1, 0.5, 0.2), -0.6, 0, 0), rotated(rect(-0.05, -0.42, 0.1, 0.56), -0.6, 0, 0)];
-    case "rotate": {
-      const s = new Shape();
-      s.moveTo(-0.38, -0.09);
-      s.lineTo(0.04, -0.09);
-      s.lineTo(0.04, -0.24);
-      s.lineTo(0.38, 0);
-      s.lineTo(0.04, 0.24);
-      s.lineTo(0.04, 0.09);
-      s.lineTo(-0.38, 0.09);
-      s.closePath();
-      return [s];
-    }
-    case "menu":
-      return [rect(-0.3, 0.16, 0.6, 0.1), rect(-0.3, -0.05, 0.6, 0.1), rect(-0.3, -0.26, 0.6, 0.1)];
-  }
-}
-
-/** Symbol als Relief, liegend (Oberseite +y), Unterkante bei y = 0. */
-function glyphSolid(tool: IconTool, depth: number, dir = 0): BufferGeometry[] {
-  return glyph(tool).map((s) => {
-    const g = new ExtrudeGeometry(s, { depth, bevelEnabled: true, bevelSize: 0.012, bevelThickness: 0.012, bevelSegments: 1 });
-    g.rotateX(-Math.PI / 2);
-    // Gleiche Drehung wie Gebaeude: dir 0 = +x, 1 = +z (Bildschirm unten), ...
-    g.rotateY((-dir * Math.PI) / 2);
-    return g;
-  });
-}
-
-// ---------------------------------------------------------------- Varianten
 
 /** Gemeinsame Bodenplatte wie bei den Gebaeuden (Warnstreifen an den Kanten). */
 function basePlate(p: Paint, size: number) {
@@ -94,51 +37,8 @@ function basePlate(p: Paint, size: number) {
   }
 }
 
-const TOOL_COLOR: Record<IconTool, number> = {
-  hand: P.assembler,
-  delete: 0xb83a2e,
-  rotate: P.extractor,
-  menu: P.metal,
-};
-
-function plaque(tool: IconTool, dir: number): Group {
-  const p = new Paint();
-  basePlate(p, 0.92);
-  p.add(boxG(0.74, 0.06, 0.74, 0, 0.1, 0), TOOL_COLOR[tool]);
-  for (const g of glyphSolid(tool, 0.07, dir)) {
-    g.translate(0, 0.16, 0);
-    p.add(g, tool === "rotate" ? P.hazard : P.port);
-  }
-  const root = new Group();
-  root.add(p.mesh());
-  return root;
-}
-
-function sign(tool: IconTool, dir: number): Group {
-  const p = new Paint();
-  p.add(boxG(0.4, 0.06, 0.4), P.metalDark);
-  p.add(cylG(0.035, 0.035, 0.5, 6, 0, 0.06, 0), P.metalLight);
-  const disc = new Paint();
-  disc.add(cylG(0.4, 0.4, 0.06, 20, 0, -0.03, 0), P.hubTrim);
-  disc.add(cylG(0.35, 0.35, 0.07, 20, 0, -0.035, 0), TOOL_COLOR[tool]);
-  for (const g of glyphSolid(tool, 0.04, dir)) {
-    g.scale(0.85, 1, 0.85);
-    g.translate(0, 0.035, 0);
-    disc.add(g, 0xf4f6f8);
-  }
-  // Scheibe aufrichten, Vorderseite zur Kamera der Werkzeugleiste.
-  const d = disc.mesh(paintMetalMat);
-  d.rotation.set(Math.PI / 2, 0, 0);
-  const holder = new Group();
-  holder.position.set(0, 0.95, 0);
-  holder.rotation.y = 0.6;
-  holder.add(d);
-  const root = new Group();
-  root.add(p.mesh(), holder);
-  return root;
-}
-
-function tool3d(tool: IconTool, dir: number): Group {
+/** `dir` dreht nur den Pfeil auf dem Drehteller (fuer den Drehen-Knopf). */
+export function iconModel(tool: IconTool, dir = 0): Group {
   const p = new Paint();
   basePlate(p, 0.92);
   switch (tool) {
@@ -178,10 +78,7 @@ function tool3d(tool: IconTool, dir: number): Group {
     case "rotate": {
       // Drehteller mit Pfeil.
       p.add(cylG(0.36, 0.38, 0.08, 16, 0, 0.1, 0), P.metal);
-      for (const g of glyphSolid("rotate", 0.06, dir)) {
-        g.translate(0, 0.18, 0);
-        p.add(g, P.port);
-      }
+      p.add(arrowSolid(0.06, dir).translate(0, 0.18, 0), P.port);
       break;
     }
     case "menu": {
@@ -202,17 +99,4 @@ function tool3d(tool: IconTool, dir: number): Group {
   const root = new Group();
   root.add(p.mesh());
   return root;
-}
-
-/** `dir` dreht nur das Symbol (fuer den Drehen-Knopf, wie die Sim-Richtung). */
-export function iconModel(tool: IconTool, style: IconStyle, dir = 0): Group {
-  switch (style) {
-    case "A":
-    case "C":
-      return plaque(tool, dir);
-    case "B":
-      return sign(tool, dir);
-    case "D":
-      return tool3d(tool, dir);
-  }
 }

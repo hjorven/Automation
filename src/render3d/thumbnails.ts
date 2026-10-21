@@ -12,7 +12,6 @@ import {
   type Object3D,
 } from "three";
 import type { EntityType } from "../sim/entities";
-import type { IconStyle } from "./models";
 import {
   assemblerModel,
   createBeltTexture,
@@ -35,7 +34,7 @@ export type ThumbnailId = EntityType | "hand" | "delete" | "menu" | "rotate0" | 
  * Werkzeugleiste. Nutzt einen kurzlebigen eigenen Renderer, der danach wieder
  * freigegeben wird. Gibt ein leeres Objekt zurueck, wenn WebGL fehlt.
  */
-export function renderThumbnails(iconStyle: IconStyle = "A"): Partial<Record<ThumbnailId, string>> {
+export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
   const out: Partial<Record<ThumbnailId, string>> = {};
   let renderer: WebGLRenderer;
   try {
@@ -57,13 +56,15 @@ export function renderThumbnails(iconStyle: IconStyle = "A"): Partial<Record<Thu
 
   // Leicht von oben und schraeg vorne, Ausgang (+x) zeigt nach rechts unten.
   const cam = new OrthographicCamera(-0.75, 0.75, 0.75, -0.75, 0.1, 20);
+  cam.position.set(2.2, 2.1, 3.2);
+  cam.lookAt(0, 0.38, 0);
 
   const beltTex = createBeltTexture();
   const builders: [ThumbnailId, () => Object3D][] = [
-    ["hand", () => iconModel("hand", iconStyle)],
-    ["delete", () => iconModel("delete", iconStyle)],
-    ["menu", () => iconModel("menu", iconStyle)],
-    ...[0, 1, 2, 3].map((d): [ThumbnailId, () => Object3D] => [`rotate${d}` as ThumbnailId, () => iconModel("rotate", iconStyle, d)]),
+    ["hand", () => iconModel("hand")],
+    ["delete", () => iconModel("delete")],
+    ["menu", () => iconModel("menu")],
+    ...[0, 1, 2, 3].map((d): [ThumbnailId, () => Object3D] => [`rotate${d}` as ThumbnailId, () => iconModel("rotate", d)]),
     ["belt", () => beltModel(beltTex)],
     ["extractor", extractorModel],
     ["smelter", smelterModel],
@@ -74,20 +75,6 @@ export function renderThumbnails(iconStyle: IconStyle = "A"): Partial<Record<Thu
     const model = build();
     // Hub ist hoeher als die anderen Gebaeude: etwas weiter herauszoomen.
     cam.zoom = type === "hub" ? 0.82 : type === "belt" ? 1.15 : 1;
-    // Stil C: Symbole genau von oben, wie flache Kacheln.
-    const isIcon = type === "hand" || type === "delete" || type === "menu" || type.startsWith("rotate");
-    if (isIcon && iconStyle === "C") {
-      cam.position.set(0, 5, 0.001);
-      cam.lookAt(0, 0, 0);
-      cam.zoom = 1.3;
-    } else if (isIcon && iconStyle === "B") {
-      cam.position.set(2.2, 2.1, 3.2);
-      cam.lookAt(0, 0.55, 0);
-      cam.zoom = 0.85;
-    } else {
-      cam.position.set(2.2, 2.1, 3.2);
-      cam.lookAt(0, 0.38, 0);
-    }
     cam.updateProjectionMatrix();
     model.traverse((o) => {
       // Glut und Leuchtfeuer sichtbar machen, Rauch ausblenden.
