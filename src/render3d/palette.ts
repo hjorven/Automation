@@ -10,6 +10,10 @@ export const ITEM_COLORS: Record<ItemId, number> = {
   gear: 0xa9b6c6,
   wire: 0xe8a35c,
   circuit: 0x3fae5a,
+  coal: 0x2f3036,
+  steel: 0x8f9cab,
+  motor: 0x4d6b8a,
+  control_unit: 0x2f7f8f,
 };
 
 export const PALETTE = {
@@ -18,8 +22,8 @@ export const PALETTE = {
   ground: 0x6f8a58,
   groundAlt: 0x6b8654,
   groundGap: 0x5b7546,
-  oreGround: { iron_ore: 0x6f7c86, copper_ore: 0x8a6a4c },
-  rock: { iron_ore: 0x7d93a8, copper_ore: 0xc0743f },
+  oreGround: { iron_ore: 0x6f7c86, copper_ore: 0x8a6a4c, coal: 0x45464a },
+  rock: { iron_ore: 0x7d93a8, copper_ore: 0xc0743f, coal: 0x2c2d31 },
 
   metalDark: 0x3a4250,
   metal: 0x77818f,
@@ -52,6 +56,19 @@ export const PALETTE = {
   assemblerPanel: 0x5c8cc4,
   hubTrim: 0xf3dc8a,
   hubPad: 0x5a616c,
+
+  // Gebaeude der Hub-Stufen (Platzhalter-Modelle in models/logistics.ts).
+  splitter: 0x4f9a7a,
+  merger: 0x8a6fb0,
+  tunnel: 0xd9a63a,
+  foundry: 0x6a6f78,
+  foundryGlow: 0xffa040,
+  extractorMk2: 0x3f8fc0,
+  planeAccent: 0xf08a24,
+  hubShell: 0xdfe4ea,
+  hubDark: 0x2b313b,
+  hubNeon: 0x5fe3ff,
+  thrusterFlame: 0x6fc8ff,
 } as const;
 
 export const cssHex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;

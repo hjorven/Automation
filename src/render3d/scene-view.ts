@@ -26,18 +26,24 @@ import type { World } from "../sim/world";
 import type { CameraRig } from "./camera-rig";
 import {
   BELT_TOP,
+  HUB_PAD_Y,
   assemblerModel,
   createBeltTexture,
   curveBedGeometry,
   curveFrameGeometry,
+  extractorMk2Model,
   extractorModel,
+  foundryModel,
   hubModel,
   itemGeometry,
   itemMaterial,
   mat,
+  mergerModel,
   smelterModel,
+  splitterModel,
   straightBedGeometry,
   straightFrameGeometry,
+  tunnelModel,
 } from "./models";
 import { PALETTE } from "./palette";
 import { TerrainView } from "./terrain";
@@ -106,6 +112,9 @@ export class SceneView {
   private readonly nodes = new Map<number, EntityNode>();
   private readonly templates = new Map<string, Group>();
   private worldVersion = -1;
+  /** Hub-Stufe beim letzten Bild; steigt sie, startet der Flieger. */
+  private lastTier = -1;
+  private flightStart = -Infinity;
 
   private readonly beltTexture = createBeltTexture();
   private readonly beltBeds: GrowingInstances[];
@@ -162,6 +171,11 @@ export class SceneView {
   render(world: World, rig: CameraRig, alpha: number, dt: number, selectedId: number | null) {
     const t = performance.now() / 1000;
     this.followCamera(rig);
+
+    if (world.tier !== this.lastTier) {
+      if (this.lastTier !== -1 && world.tier > this.lastTier) this.flightStart = t;
+      this.lastTier = world.tier;
+    }
 
     if (world.version !== this.worldVersion) {
       this.worldVersion = world.version;
@@ -255,13 +269,15 @@ export class SceneView {
   }
 
   private createNode(e: Exclude<Entity, Belt>): EntityNode {
-    let tpl = this.templates.get(e.type);
+    const tplKey = templateKey(e);
+    let tpl = this.templates.get(tplKey);
     if (!tpl) {
-      tpl = buildTemplate(e.type);
-      this.templates.set(e.type, tpl);
+      tpl = buildTemplate(e);
+      this.templates.set(tplKey, tpl);
     }
     const root = tpl.clone();
     const own: MeshStandardMaterial[] = [];
+    const shocks: MeshBasicMaterial[] = [];
     root.traverse((o) => {
       if (o instanceof Mesh && (o.name === "glow" || o.name === "beacon")) {
         // Pro Gebaeude eigene Kopie; beide Glut-Flaechen teilen sie sich.
@@ -271,8 +287,14 @@ export class SceneView {
           own.push(m);
         }
         o.material = m;
+      } else if (o instanceof Mesh && o.name === "shock") {
+        // Druckwelle blendet je Hub einzeln aus; erst nach "glow"/"beacon" ablegen.
+        const m = (o.material as MeshBasicMaterial).clone();
+        o.material = m;
+        shocks.push(m);
       }
     });
+    own.push(...(shocks as unknown as MeshStandardMaterial[]));
     root.position.set(e.x + 0.5, 0, e.y + 0.5);
     root.rotation.y = yawOf(e.dir);
     this.entitiesGroup.add(root);
@@ -293,9 +315,10 @@ export class SceneView {
       if (!e) continue;
       const root = node.root;
       switch (e.type) {
-        case "extractor": {
+        case "extractor":
+        case "extractor_mk2": {
           // Dreht beim Foerdern, bremst aus, wenn der Ausgang verstopft ist.
-          const target = e.working ? 7 : 0;
+          const target = e.working ? (e.type === "extractor_mk2" ? 12 : 7) : 0;
           node.spin += (target - node.spin) * Math.min(1, dt * 3);
           const head = root.getObjectByName("head")!;
           head.rotation.y += node.spin * dt;
@@ -317,6 +340,12 @@ export class SceneView {
           }
           break;
         }
+        case "foundry": {
+          const glow = node.own[0];
+          const target = e.crafting ? 1.8 + 0.4 * Math.sin(t * 7 + id) : 0.05;
+          glow.emissiveIntensity += (target - glow.emissiveIntensity) * Math.min(1, dt * 4);
+          break;
+        }
         case "assembler": {
           const target = e.crafting ? 5 : 0;
           node.spin += (target - node.spin) * Math.min(1, dt * 4);
@@ -327,8 +356,10 @@ export class SceneView {
           break;
         }
         case "hub": {
-          root.getObjectByName("ring")!.rotation.z = t * 0.8;
-          node.own[0].emissiveIntensity = 0.8 + 0.6 * Math.sin(t * 3);
+          const thrust = flyDrone(root, t - this.flightStart, t);
+          node.spin += (0.8 + thrust * 4 - node.spin) * Math.min(1, dt * 2);
+          root.getObjectByName("ring")!.rotation.z += node.spin * dt;
+          node.own[0].emissiveIntensity = 0.8 + 0.6 * Math.sin(t * 3) + thrust * 1.5;
           break;
         }
       }
@@ -368,6 +399,63 @@ export class SceneView {
 
 // ------------------------------------------------------------ Hilfen
 
+/** Dauer des Drohnenflugs in Sekunden: zuenden, starten, weg, zurueck, landen. */
+const FLIGHT = 10;
+
+/**
+ * Liefer-Drohne auf dem Hub nach einem Upgrade: Triebwerke zuenden, Druckwelle,
+ * senkrechter Raketenstart mit Drehung, spaeter Landung mit Gegenschub.
+ * `s` = Sekunden seit dem Upgrade. Liefert den Schub (0 = aus) fuer Lichteffekte.
+ */
+function flyDrone(root: Object3D, s: number, t: number): number {
+  const drone = root.getObjectByName("drone")!;
+  const shock = root.getObjectByName("shock") as Mesh;
+  drone.visible = true;
+  drone.position.set(0, HUB_PAD_Y, 0);
+  drone.rotation.set(0, 0, 0);
+  shock.visible = false;
+
+  let thrust = 0;
+  if (s >= 0 && s < FLIGHT) {
+    if (s < 1.2) {
+      // Zuenden: Schub baut sich auf, die Drohne zittert und hebt leicht ab.
+      const k = s / 1.2;
+      thrust = 0.25 + 0.55 * k;
+      drone.position.y += 0.05 * k * k + Math.sin(t * 70) * 0.004 * k;
+      drone.position.x = Math.sin(t * 53) * 0.004 * k;
+    } else if (s < 4) {
+      const u = (s - 1.2) / 2.8;
+      thrust = 2.2;
+      drone.position.y += 0.05 + 2 * u + 30 * u * u * u;
+      drone.rotation.y = u * u * 8;
+      const k = (s - 1.2) / 0.9;
+      if (k < 1) {
+        shock.visible = true;
+        shock.scale.setScalar(1 + k * 4);
+        (shock.material as MeshBasicMaterial).opacity = 0.7 * (1 - k) * (1 - k);
+      }
+    } else if (s < 6) {
+      drone.visible = false; // unterwegs
+    } else {
+      // Rueckkehr: faellt von oben, bremst mit Gegenschub und setzt weich auf.
+      const w = 1 - (s - 6) / (FLIGHT - 6);
+      thrust = w > 0.03 ? 0.7 + 0.9 * w : w * 20;
+      drone.position.y += 1.5 * w + 30 * w * w * w;
+      drone.rotation.y = -w * w * 8;
+    }
+  }
+
+  let i = 0;
+  for (const flame of drone.children) {
+    if (flame.name !== "flame") continue;
+    const len = thrust * (1 + 0.18 * Math.sin(t * 41 + i * 1.7));
+    const width = thrust > 0 ? Math.min(1.2, 0.6 + 0.4 * thrust) : 0.001;
+    flame.scale.set(width, Math.max(0.001, len), width);
+    i++;
+  }
+  return thrust;
+}
+
 /** Modelle zeigen nach +x; Sim-Richtung `dir` als Drehung um die Hochachse. */
 const yawOf = (d: Dir) => (-d * Math.PI) / 2;
 
@@ -378,13 +466,27 @@ function beltVariant(b: Belt, input: Dir): BeltVariant {
 }
 
 function nodeKey(e: Entity): string {
-  return `${e.type}:${e.dir}`;
+  return `${templateKey(e)}:${e.dir}`;
 }
 
-function buildTemplate(type: Exclude<Entity, Belt>["type"]): Group {
-  switch (type) {
+function templateKey(e: Entity): string {
+  return e.type === "tunnel" ? `tunnel:${e.exit ? "out" : "in"}` : e.type;
+}
+
+function buildTemplate(e: Exclude<Entity, Belt>): Group {
+  switch (e.type) {
     case "extractor":
       return extractorModel();
+    case "extractor_mk2":
+      return extractorMk2Model();
+    case "foundry":
+      return foundryModel();
+    case "splitter":
+      return splitterModel();
+    case "merger":
+      return mergerModel();
+    case "tunnel":
+      return tunnelModel(e.exit);
     case "smelter":
       return smelterModel();
     case "assembler":

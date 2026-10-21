@@ -30,7 +30,7 @@ describe("save", () => {
     const copy = deserialize(JSON.parse(JSON.stringify(serialize(w))));
 
     expect(copy.tick).toBe(w.tick);
-    expect([...copy.delivered]).toEqual([...w.delivered]);
+    expect([...copy.storage]).toEqual([...w.storage]);
     expect(copy.entities.size).toBe(w.entities.size);
     const asm = copy.entityAt(3, 3) as Machine;
     expect(asm.type).toBe("assembler");
@@ -43,8 +43,8 @@ describe("save", () => {
     const copy = deserialize(JSON.parse(JSON.stringify(serialize(w))));
     run(w, 30);
     run(copy, 30);
-    expect(w.delivered.get("iron_plate")).toBeGreaterThan(5);
-    expect([...copy.delivered]).toEqual([...w.delivered]);
+    expect(w.storage.get("iron_plate")).toBeGreaterThan(5);
+    expect([...copy.storage]).toEqual([...w.storage]);
     expect(serialize(copy).entities).toEqual(serialize(w).entities);
   });
 
@@ -67,7 +67,7 @@ describe("save", () => {
       ],
     });
     expect(w.entities.size).toBe(1);
-    expect([...w.delivered]).toEqual([["iron_plate", 3]]);
+    expect([...w.storage]).toEqual([["iron_plate", 3]]);
   });
 
   it("kodiert als Text und zurueck", async () => {

@@ -15,11 +15,16 @@ import type { EntityType } from "../sim/entities";
 import {
   assemblerModel,
   createBeltTexture,
+  extractorMk2Model,
   extractorModel,
+  foundryModel,
   hubModel,
   iconModel,
   mat,
+  mergerModel,
   smelterModel,
+  splitterModel,
+  tunnelModel,
   straightBedGeometry,
   straightFrameGeometry,
 } from "./models";
@@ -70,6 +75,11 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["smelter", smelterModel],
     ["assembler", assemblerModel],
     ["hub", hubModel],
+    ["splitter", splitterModel],
+    ["merger", mergerModel],
+    ["tunnel", () => tunnelModel(false)],
+    ["foundry", foundryModel],
+    ["extractor_mk2", extractorMk2Model],
   ];
   for (const [type, build] of builders) {
     const model = build();

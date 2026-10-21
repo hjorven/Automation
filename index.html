@@ -78,6 +78,23 @@
         color: var(--muted);
         margin-top: 4px;
       }
+      #hud .next {
+        margin-top: 4px;
+      }
+      #hud .next b {
+        color: var(--accent);
+      }
+      #hud .notice {
+        margin-top: 4px;
+        color: #9be59b;
+      }
+      #hud .cost {
+        margin-top: 4px;
+        color: var(--muted);
+      }
+      #hud .cost.missing {
+        color: #f88;
+      }
       #hud .stocks {
         display: flex;
         flex-wrap: wrap;
@@ -155,6 +172,45 @@
         text-align: left;
         padding: 10px;
         min-height: 44px;
+      }
+      #panel .costs {
+        display: flex;
+        flex-direction: column;
+        gap: 6px;
+        margin: 6px 0;
+      }
+      #panel .cost-row {
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 2px 8px;
+      }
+      #panel .cost-row b {
+        color: var(--accent);
+        font-weight: 600;
+      }
+      #panel .bar {
+        grid-column: 1 / -1;
+        height: 6px;
+        border-radius: 3px;
+        background: #0e1116;
+        overflow: hidden;
+      }
+      #panel .fill {
+        height: 100%;
+        background: var(--accent);
+        transition: width 0.25s;
+      }
+      #panel .upgrade {
+        width: 100%;
+        min-height: 48px;
+        margin-top: 6px;
+        background: #2f6b3f;
+        font-weight: 600;
+      }
+      #panel .upgrade:disabled {
+        background: var(--btn);
+        color: var(--muted);
+        cursor: default;
       }
       #panel .actions {
         display: flex;

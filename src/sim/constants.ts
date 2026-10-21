@@ -10,3 +10,6 @@ export const ITEM_SPACING = 0.34;
 
 /** Ein Bohrer foerdert alle 40 Ticks ein Erz (0,5/s). */
 export const EXTRACT_TICKS = 40;
+
+/** Ein Tunnel-Eingang erreicht Ausgaenge bis zu so vielen Feldern voraus. */
+export const TUNNEL_RANGE = 5;
