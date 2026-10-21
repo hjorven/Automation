@@ -57,6 +57,11 @@ export class Camera {
     this.pos.y += before.y - after.y;
   }
 
+  /** Aendert sich, sobald sich Ausschnitt oder Zoom aendern. */
+  key(): string {
+    return `${this.pos.x},${this.pos.y},${this.zoom},${this.screenW},${this.screenH}`;
+  }
+
   /** Sichtbarer Weltbereich in Gitterkoordinaten (fuer Culling). */
   visibleTileBounds() {
     const tl = this.screenToWorld(0, 0);

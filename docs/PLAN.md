@@ -287,9 +287,34 @@ Empfehlung: **M0–M5 zuerst komplett lokal** (kein Backend), erst danach Supaba
 - [x] Kamera + Touch-Steuerung (Pan, Pinch-Zoom, Mausrad)
 - [x] Build grün (`npm run build`)
 - [x] Deploy-Workflow (`.github/workflows/deploy.yml`)
-- [ ] GitHub Pages aktivieren (Repo-Settings) + nach `main` mergen
+- [x] GitHub Pages aktiviert (Repo öffentlich) + nach `main` gemergt
 
-### Nächster Schritt: M1/M3
+### Status M1–M3 (+ Teile von M4)
 
-Datenmodell für rezeptbasierte Gebäude (Extraktor, Band, Maschine mit Rezept, Hub),
-Fixed-Tick-Simulation und Item-Fluss über Bänder.
+- [x] Simulation mit festem Takt (`20 Ticks/s`), frei von Render-Code, mit `vitest`-Tests
+- [x] Unendliche Welt mit Erzvorkommen (Eisen, Kupfer), Start-Vorkommen neben dem Hub
+- [x] Gebäude: Förderband, Bohrer, Schmelze (Rezept automatisch), Montierer (Rezept wählbar), Hub
+- [x] Rezepte: Eisen-/Kupferplatte, Zahnrad, Kupferdraht, Schaltkreis
+- [x] Bänder: Mindestabstand, Stau, automatische Kurven, flüssige Interpolation zwischen Ticks
+- [x] Bauen per Touch: Werkzeug wählen, tippen = bauen/drehen, ziehen = Bänder malen,
+      zwei Finger = verschieben/zoomen; Maus + Tastatur (`1`–`7`, `R`, `Esc`)
+- [x] Info-Panel (Hand-Werkzeug antippen): Rezept wählen, drehen, abreißen
+- [x] Auftrags-Kette im HUD (5 Aufträge)
+- [x] CI-Workflow für Pull Requests (`npm test` + `npm run build`)
+
+**Steuerung (Kurzfassung):**
+
+| Aktion | Touch | Maus/Tastatur |
+|--------|-------|---------------|
+| Bauen | Werkzeug wählen, Feld antippen | Linksklick |
+| Bänder legen | Mit dem Finger ziehen | Linke Taste ziehen |
+| Gebäude drehen | Gleiches Werkzeug, Gebäude antippen | `R` vor dem Bauen |
+| Verschieben | Zwei Finger (oder Hand-Werkzeug) | Rechte Taste ziehen |
+| Zoomen | Pinch | Mausrad |
+| Rezept wählen | Hand, Montierer antippen | dito |
+
+### Nächster Schritt: M5 – Speichern
+
+Auto-Save in IndexedDB (Safari lädt Tabs gern neu – ohne Speichern ist die Fabrik dann weg),
+Export/Import als Code, versioniertes Save-Format.
+Danach M6: Splitter/Zusammenführer, Untergrund-Bänder, Freischaltungen über Aufträge.

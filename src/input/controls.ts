@@ -1,68 +1,138 @@
+import type { Editor } from "../game/editor";
 import type { Camera } from "../render/camera";
 
+/** Bewegung unter dieser Schwelle (Pixel) gilt noch als Antippen. */
+const TAP_SLOP = 8;
+
+type Gesture =
+  | { kind: "idle" }
+  // Bau-Werkzeug aktiv, Finger liegt, aber es ist noch offen, ob Tipp, Zug oder Pinch folgt.
+  | { kind: "pending"; tileX: number; tileY: number }
+  | { kind: "stroke" }
+  | { kind: "pan"; startX: number; startY: number; t0: number; moved: boolean; tapSelects: boolean }
+  | { kind: "pinch"; dist: number; midX: number; midY: number }
+  // Nach einem Pinch: warten, bis alle Finger weg sind, damit nichts versehentlich gebaut wird.
+  | { kind: "done" };
+
 /**
- * Pointer-Steuerung fuer Pan und Zoom. Nutzt Pointer Events, damit Maus und
- * Touch denselben Pfad teilen. Pinch-to-Zoom ueber zwei gleichzeitige Pointer.
+ * Pointer-Gesten fuer Touch und Maus:
+ * - Hand-Werkzeug: ein Finger verschiebt, Antippen waehlt aus.
+ * - Bau-Werkzeug: ein Finger baut (Ziehen = mehrere Felder / Baender malen).
+ * - Zwei Finger: immer verschieben + zoomen.
+ * - Maus: Rad zoomt, rechte/mittlere Taste verschiebt.
  */
-export class CameraControls {
-  private pointers = new Map<number, { x: number; y: number }>();
-  private lastPinchDist = 0;
+export class Controls {
+  private readonly pointers = new Map<number, { x: number; y: number }>();
+  private g: Gesture = { kind: "idle" };
 
   constructor(
-    private canvas: HTMLElement,
-    private camera: Camera,
+    private readonly el: HTMLElement,
+    private readonly camera: Camera,
+    private readonly editor: Editor,
   ) {
-    canvas.addEventListener("pointerdown", this.onDown);
-    canvas.addEventListener("pointermove", this.onMove);
-    canvas.addEventListener("pointerup", this.onUp);
-    canvas.addEventListener("pointercancel", this.onUp);
-    canvas.addEventListener("pointerleave", this.onUp);
-    canvas.addEventListener("wheel", this.onWheel, { passive: false });
+    el.addEventListener("pointerdown", this.onDown);
+    el.addEventListener("pointermove", this.onMove);
+    el.addEventListener("pointerup", this.onUp);
+    el.addEventListener("pointercancel", this.onUp);
+    el.addEventListener("wheel", this.onWheel, { passive: false });
+    el.addEventListener("contextmenu", (e) => e.preventDefault());
+  }
+
+  private tileAt(sx: number, sy: number) {
+    const w = this.camera.screenToWorld(sx, sy);
+    return { x: Math.floor(w.x), y: Math.floor(w.y) };
   }
 
   private onDown = (e: PointerEvent) => {
-    this.canvas.setPointerCapture?.(e.pointerId);
+    this.el.setPointerCapture?.(e.pointerId);
     this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    if (this.pointers.size === 2) this.lastPinchDist = this.pinchDistance();
+
+    if (this.pointers.size === 1) {
+      const panOnly = e.pointerType === "mouse" && e.button !== 0;
+      if (panOnly || this.editor.tool === "hand") {
+        this.g = { kind: "pan", startX: e.clientX, startY: e.clientY, t0: performance.now(), moved: false, tapSelects: !panOnly };
+      } else {
+        const t = this.tileAt(e.clientX, e.clientY);
+        this.g = { kind: "pending", tileX: t.x, tileY: t.y };
+      }
+    } else if (this.pointers.size === 2) {
+      if (this.g.kind === "stroke") this.editor.strokeEnd();
+      const m = this.midpoint();
+      this.g = { kind: "pinch", dist: this.distance(), midX: m.x, midY: m.y };
+    }
   };
+
+  private commitPending(tap: boolean) {
+    if (this.g.kind !== "pending") return;
+    this.editor.strokeBegin(this.g.tileX, this.g.tileY, tap);
+    this.g = { kind: "stroke" };
+  }
 
   private onMove = (e: PointerEvent) => {
     const prev = this.pointers.get(e.pointerId);
-    if (!prev) return;
+    if (!prev) return; // Maus ohne gedrueckte Taste
+    this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
+    const g = this.g;
 
-    if (this.pointers.size === 1) {
-      // Ein Finger / Maus gedrueckt -> verschieben
-      this.camera.panByPixels(e.clientX - prev.x, e.clientY - prev.y);
-      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-    } else if (this.pointers.size === 2) {
-      // Zwei Finger -> Pinch-Zoom um den Mittelpunkt
-      this.pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
-      const dist = this.pinchDistance();
-      if (this.lastPinchDist > 0) {
-        const mid = this.pinchMidpoint();
-        this.camera.zoomAt(dist / this.lastPinchDist, mid.x, mid.y);
+    switch (g.kind) {
+      case "pending": {
+        const t = this.tileAt(e.clientX, e.clientY);
+        if (t.x === g.tileX && t.y === g.tileY) return;
+        this.commitPending(false);
+        this.editor.strokeMove(t.x, t.y);
+        break;
       }
-      this.lastPinchDist = dist;
+      case "stroke": {
+        const t = this.tileAt(e.clientX, e.clientY);
+        this.editor.strokeMove(t.x, t.y);
+        break;
+      }
+      case "pan":
+        this.camera.panByPixels(e.clientX - prev.x, e.clientY - prev.y);
+        if (Math.hypot(e.clientX - g.startX, e.clientY - g.startY) > TAP_SLOP) g.moved = true;
+        break;
+      case "pinch": {
+        if (this.pointers.size < 2) return;
+        const dist = this.distance();
+        const m = this.midpoint();
+        this.camera.panByPixels(m.x - g.midX, m.y - g.midY);
+        if (g.dist > 0) this.camera.zoomAt(dist / g.dist, m.x, m.y);
+        g.dist = dist;
+        g.midX = m.x;
+        g.midY = m.y;
+        break;
+      }
     }
   };
 
   private onUp = (e: PointerEvent) => {
-    this.pointers.delete(e.pointerId);
-    this.lastPinchDist = 0;
+    if (!this.pointers.delete(e.pointerId)) return;
+    const g = this.g;
+
+    if (g.kind === "pending") {
+      this.commitPending(true);
+      this.editor.strokeEnd();
+    } else if (g.kind === "stroke") {
+      this.editor.strokeEnd();
+    } else if (g.kind === "pan" && g.tapSelects && !g.moved && performance.now() - g.t0 < 500) {
+      const t = this.tileAt(e.clientX, e.clientY);
+      this.editor.select(t.x, t.y);
+    }
+
+    this.g = this.pointers.size === 0 ? { kind: "idle" } : { kind: "done" };
   };
 
   private onWheel = (e: WheelEvent) => {
     e.preventDefault();
-    const factor = Math.exp(-e.deltaY * 0.0015);
-    this.camera.zoomAt(factor, e.clientX, e.clientY);
+    this.camera.zoomAt(Math.exp(-e.deltaY * 0.0015), e.clientX, e.clientY);
   };
 
-  private pinchDistance(): number {
+  private distance(): number {
     const [a, b] = [...this.pointers.values()];
     return Math.hypot(a.x - b.x, a.y - b.y);
   }
 
-  private pinchMidpoint(): { x: number; y: number } {
+  private midpoint(): { x: number; y: number } {
     const [a, b] = [...this.pointers.values()];
     return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
   }
