@@ -1,7 +1,7 @@
 import { dirBetween, rotateCW, type Dir } from "../sim/dir";
 import type { Entity, EntityType } from "../sim/entities";
 import type { Recipe } from "../sim/recipes";
-import type { World } from "../sim/world";
+import type { BuildError, World } from "../sim/world";
 
 export type Tool = "hand" | "delete" | EntityType;
 
@@ -23,6 +23,8 @@ export class Editor {
   selectedId: number | null = null;
   /** Neue Montierer uebernehmen das zuletzt gewaehlte Rezept. */
   assemblerRecipe: Recipe | null = null;
+  /** Warum der letzte Bauversuch scheiterte (Hinweis in der UI). */
+  lastError: { error: BuildError; at: number } | null = null;
 
   private stroke: Stroke | null = null;
   private readonly listeners = new Set<() => void>();
@@ -42,6 +44,7 @@ export class Editor {
   }
 
   setTool(tool: Tool) {
+    if (tool !== "hand" && tool !== "delete" && !this.world.isUnlocked(tool)) return;
     this.tool = tool;
     if (tool !== "hand") this.selectedId = null;
     this.emit();
@@ -71,16 +74,35 @@ export class Editor {
 
   deleteSelected() {
     const e = this.selected;
-    if (e) this.world.remove(e.x, e.y);
+    if (e) this.world.demolish(e.x, e.y);
     this.selectedId = null;
     this.emit();
   }
 
   setSelectedRecipe(recipe: Recipe | null) {
     const e = this.selected;
-    if (e?.type !== "assembler") return;
+    if (e?.type !== "assembler" && e?.type !== "foundry") return;
+    if (recipe && !this.world.isRecipeUnlocked(recipe)) return;
     this.world.setRecipe(e, recipe);
-    this.assemblerRecipe = recipe;
+    if (e.type === "assembler") this.assemblerRecipe = recipe;
+    this.emit();
+  }
+
+  toggleSelectedTunnel() {
+    const e = this.selected;
+    if (e?.type === "tunnel") this.world.toggleTunnel(e);
+    this.emit();
+  }
+
+  upgradeSelectedExtractor() {
+    const e = this.selected;
+    const up = e && this.world.upgradeExtractor(e);
+    if (up) this.selectedId = up.id;
+    this.emit();
+  }
+
+  upgradeHub() {
+    this.world.upgradeHub();
     this.emit();
   }
 
@@ -114,7 +136,7 @@ export class Editor {
     if (tool === "hand") return;
 
     if (tool === "delete") {
-      const e = w.remove(x, y);
+      const e = w.demolish(x, y);
       if (e && e.id === this.selectedId) this.selectedId = null;
       return;
     }
@@ -129,6 +151,13 @@ export class Editor {
 
     const existing = w.entityAt(x, y);
     if (existing) {
+      // Bohrer Mk2 auf einen alten Bohrer setzen tauscht ihn aus.
+      if (tool === "extractor_mk2" && existing.type === "extractor") {
+        const up = w.upgradeExtractor(existing);
+        if (up) s.placed.add(up.id);
+        else this.fail(w.isUnlocked(tool) ? "cost" : "locked");
+        return;
+      }
       if (existing.type !== tool) return;
       // Antippen eines gleichen Gebaeudes dreht es; Ziehen ueber Baender richtet sie aus.
       if (moveDir === null && s.tap) w.setDir(existing, rotateCW(existing.dir));
@@ -139,7 +168,18 @@ export class Editor {
     }
 
     const recipe = tool === "assembler" ? this.assemblerRecipe : null;
-    const e = w.place(tool, x, y, this.rotation, recipe);
+    const error = w.buildError(tool, x, y);
+    if (error) {
+      // Belegte Felder beim Ziehen sind normal; nur echte Hindernisse melden.
+      if (error !== "blocked") this.fail(error);
+      return;
+    }
+    const e = w.build(tool, x, y, this.rotation, recipe);
     if (e) s.placed.add(e.id);
+  }
+
+  private fail(error: BuildError) {
+    this.lastError = { error, at: performance.now() };
+    this.emit();
   }
 }

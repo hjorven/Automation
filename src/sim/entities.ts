@@ -1,5 +1,5 @@
-import { BELT_SPEED, EXTRACT_TICKS, ITEM_SPACING } from "./constants";
-import { DX, DY, opposite, type Dir } from "./dir";
+import { BELT_SPEED, EXTRACT_TICKS, ITEM_SPACING, TUNNEL_RANGE } from "./constants";
+import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "./dir";
 import type { ItemId } from "./items";
 import { smeltingRecipeFor, type MachineKind, type Recipe } from "./recipes";
 import type { OreId } from "./terrain";
@@ -11,7 +11,9 @@ export interface Host {
   deliver(item: ItemId): void;
 }
 
-export type EntityType = "belt" | "extractor" | MachineKind | "hub";
+export type ExtractorKind = "extractor" | "extractor_mk2";
+
+export type EntityType = "belt" | ExtractorKind | MachineKind | "hub" | "splitter" | "merger" | "tunnel";
 
 abstract class EntityBase {
   abstract readonly type: EntityType;
@@ -94,12 +96,23 @@ export class Belt extends EntityBase {
 }
 
 export class Extractor extends EntityBase {
-  readonly type = "extractor";
   timer = 0;
   buffer: ItemId | null = null;
 
-  constructor(id: number, x: number, y: number, dir: Dir, readonly ore: OreId) {
+  constructor(
+    id: number,
+    x: number,
+    y: number,
+    dir: Dir,
+    readonly ore: OreId,
+    readonly type: ExtractorKind = "extractor",
+  ) {
     super(id, x, y, dir);
+  }
+
+  /** Mk2 foerdert doppelt so schnell. */
+  get interval(): number {
+    return this.type === "extractor_mk2" ? EXTRACT_TICKS / 2 : EXTRACT_TICKS;
   }
 
   accept(): boolean {
@@ -111,7 +124,7 @@ export class Extractor extends EntityBase {
   }
 
   update(host: Host): void {
-    if (this.buffer === null && ++this.timer >= EXTRACT_TICKS) {
+    if (this.buffer === null && ++this.timer >= this.interval) {
       this.timer = 0;
       this.buffer = this.ore;
     }
@@ -204,7 +217,137 @@ export class Hub extends EntityBase {
   }
 }
 
-export type Entity = Belt | Extractor | Machine | Hub;
+/** Verteiler: nimmt von hinten an, gibt abwechselnd nach vorne, links und rechts aus. */
+export class Splitter extends EntityBase {
+  readonly type = "splitter";
+  buffer: ItemId | null = null;
+  /** Naechster Ausgang im Wechsel (Index in `outputs`). */
+  next = 0;
+
+  private get outputs(): Dir[] {
+    return [this.dir, rotateCCW(this.dir), rotateCW(this.dir)];
+  }
+
+  accept(item: ItemId, side: Dir): boolean {
+    if (side !== opposite(this.dir) || this.buffer !== null) return false;
+    this.buffer = item;
+    return true;
+  }
+
+  update(host: Host): void {
+    if (this.buffer === null) return;
+    const outs = this.outputs;
+    for (let i = 0; i < outs.length; i++) {
+      const k = (this.next + i) % outs.length;
+      const d = outs[k];
+      const target = host.entityAt(this.x + DX[d], this.y + DY[d]);
+      if (target && target.accept(this.buffer, opposite(d), host)) {
+        this.buffer = null;
+        this.next = (k + 1) % outs.length;
+        return;
+      }
+    }
+  }
+
+  outputsTo(x: number, y: number): boolean {
+    return this.outputs.some((d) => this.x + DX[d] === x && this.y + DY[d] === y);
+  }
+}
+
+/** Zusammenfuehrer: nimmt von hinten, links und rechts an, gibt nach vorne aus. */
+export class Merger extends EntityBase {
+  readonly type = "merger";
+  buffer: ItemId | null = null;
+  private lastSide: Dir | null = null;
+  /** Seiten (Bitmaske), die zuletzt abgewiesen wurden; fuer faires Abwechseln. */
+  private waiting = 0;
+  private waitingPrev = 0;
+
+  accept(item: ItemId, side: Dir): boolean {
+    if (side === this.dir) return false;
+    const others = (this.waiting | this.waitingPrev) & ~(1 << side);
+    if (this.buffer !== null || (side === this.lastSide && others)) {
+      this.waiting |= 1 << side;
+      return false;
+    }
+    this.buffer = item;
+    this.lastSide = side;
+    return true;
+  }
+
+  update(host: Host): void {
+    this.waitingPrev = this.waiting;
+    this.waiting = 0;
+    if (this.buffer !== null && this.pushForward(this.buffer, host)) this.buffer = null;
+  }
+}
+
+export interface TunnelItem {
+  item: ItemId;
+  /** Verbleibende Ticks bis zum Ausgang. */
+  left: number;
+}
+
+/**
+ * Tunnel (Untergrund-Band). Ein Eingang schickt Items unter bis zu
+ * TUNNEL_RANGE - 1 Feldern hindurch zum naechsten Ausgang gleicher Richtung.
+ */
+export class Tunnel extends EntityBase {
+  readonly type = "tunnel";
+  /** Eingang (false) oder Ausgang (true). */
+  exit = false;
+  /** Eingang: Items unterwegs, [0] ist am weitesten. */
+  transit: TunnelItem[] = [];
+  /** Ausgang: wartet auf Platz vor dem Tunnel. */
+  buffer: ItemId | null = null;
+
+  /** Zum Eingang gehoeriger Ausgang, falls vorhanden. */
+  partner(host: Host): Tunnel | null {
+    for (let k = 1; k <= TUNNEL_RANGE; k++) {
+      const e = host.entityAt(this.x + DX[this.dir] * k, this.y + DY[this.dir] * k);
+      if (e instanceof Tunnel && e.dir === this.dir) return e.exit ? e : null;
+    }
+    return null;
+  }
+
+  accept(item: ItemId, side: Dir, host: Host): boolean {
+    if (this.exit || side !== opposite(this.dir)) return false;
+    const out = this.partner(host);
+    if (!out) return false;
+    const travel = Math.round(Math.hypot(out.x - this.x, out.y - this.y) / BELT_SPEED);
+    const last = this.transit[this.transit.length - 1];
+    if (last && last.left > travel - TUNNEL_GAP) return false;
+    this.transit.push({ item, left: travel });
+    return true;
+  }
+
+  update(host: Host): void {
+    if (this.exit) {
+      if (this.buffer !== null && this.pushForward(this.buffer, host)) this.buffer = null;
+      return;
+    }
+    for (let i = 0; i < this.transit.length; i++) {
+      const min = i === 0 ? 0 : this.transit[i - 1].left + TUNNEL_GAP;
+      this.transit[i].left = Math.max(min, this.transit[i].left - 1);
+    }
+    const head = this.transit[0];
+    if (!head || head.left > 0) return;
+    const out = this.partner(host);
+    if (out && out.buffer === null) {
+      out.buffer = head.item;
+      this.transit.shift();
+    }
+  }
+
+  outputsTo(x: number, y: number): boolean {
+    return this.exit && super.outputsTo(x, y);
+  }
+}
+
+/** Mindestabstand zweier Items im Tunnel, wie auf dem Band. */
+const TUNNEL_GAP = Math.ceil(ITEM_SPACING / BELT_SPEED);
+
+export type Entity = Belt | Extractor | Machine | Hub | Splitter | Merger | Tunnel;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

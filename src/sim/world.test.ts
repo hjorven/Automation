@@ -46,7 +46,7 @@ describe("World", () => {
     w.place("hub", 0, -1, RIGHT);
     run(w, 20);
     // 0,5 Erz/s, abzueglich Anlaufzeit ueber 5 Baender.
-    expect(w.delivered.get("iron_ore")).toBeGreaterThanOrEqual(8);
+    expect(w.storage.get("iron_ore")).toBeGreaterThanOrEqual(8);
   });
 
   it("schmilzt Erz zu Platten", () => {
@@ -57,8 +57,8 @@ describe("World", () => {
     beltRow(w, -3, 0, -1);
     w.place("hub", 0, -1, RIGHT);
     run(w, 30);
-    expect(w.delivered.get("iron_plate")).toBeGreaterThan(5);
-    expect(w.delivered.has("iron_ore")).toBe(false);
+    expect(w.storage.get("iron_plate")).toBeGreaterThan(5);
+    expect(w.storage.has("iron_ore")).toBe(false);
   });
 
   it("baut Zahnraeder im Montierer", () => {
@@ -69,7 +69,7 @@ describe("World", () => {
     beltRow(w, -3, 0, -1);
     w.place("hub", 0, -1, RIGHT);
     run(w, 30);
-    expect(w.delivered.get("gear")).toBeGreaterThan(3);
+    expect(w.storage.get("gear")).toBeGreaterThan(3);
   });
 
   it("nimmt bei falschem Rezept nichts an und staut das Band", () => {
@@ -103,6 +103,6 @@ describe("World", () => {
     w.place("hub", -5, 1, RIGHT);
     run(w, 10);
     expect(w.beltInputSide(w.entityAt(-5, -1) as Belt)).toBe(2);
-    expect(w.delivered.get("iron_ore")).toBeGreaterThan(2);
+    expect(w.storage.get("iron_ore")).toBeGreaterThan(2);
   });
 });

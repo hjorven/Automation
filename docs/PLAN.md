@@ -339,6 +339,31 @@ Empfehlung: **M0–M5 zuerst komplett lokal** (kein Backend), erst danach Supaba
 - [ ] Offen: Bau-Vorschau (Geist-Modell), Fortschrittsanzeigen über Maschinen,
       Performance-Test auf dem iPad mit großer Fabrik
 
-### Nächster Schritt: M6 – Ausbau
+### Status M6 – Hub-Stufen und Logistik (Satisfactory-Stil)
 
-Splitter/Zusammenführer, Untergrund-Bänder, Freischaltungen über Aufträge.
+Der Hub hat ein Lager. Abgelieferte Items landen dort und werden für Hub-Upgrades
+und neue Gebäude ausgegeben. Die alten 5 Aufträge sind entfallen. Logik in
+`src/sim/progression.ts`, Spielstand `SAVE_VERSION = 2` (v1 wird migriert: alles
+Abgelieferte liegt danach im Lager, Stufe 0).
+
+| Stufe | Kosten | Schaltet frei |
+|-------|--------|---------------|
+| 0 Start | - | Band, Bohrer, Schmelze, Hub |
+| 1 Fertigung | 20 Eisenplatte, 10 Kupferplatte | Montierer, Zahnrad, Kupferdraht |
+| 2 Logistik | 25 Zahnrad, 40 Kupferdraht | Verteiler, Zusammenführer, Tunnel, Schaltkreis |
+| 3 Stahl | 30 Schaltkreis, 30 Zahnrad | Gießerei, Stahl (Eisenerz + Kohle) |
+| 4 Maschinenbau | 40 Stahl, 40 Schaltkreis | Bohrer Mk2, Motor, Steuereinheit |
+| 5 Abschluss | 20 Motor, 20 Steuereinheit | Fabrik komplett |
+
+- [x] Hub-Panel (Hand, Hub antippen): Fortschrittsbalken, Upgrade-Knopf, Lager
+- [x] Baukosten aus dem Lager (Band, Bohrer, Schmelze gratis), Abreißen erstattet
+- [x] Gesperrte Gebäude erscheinen nicht in der Leiste, gesperrte Rezepte nicht im Panel
+- [x] Verteiler (1 rein, 3 raus im Wechsel), Zusammenführer (3 rein im Wechsel, 1 raus)
+- [x] Tunnel: Eingang und Ausgang werden automatisch gepaart, bis zu 4 Felder dazwischen
+- [x] Kohle (Start-Vorkommen bei `(1, 9)`, sonst nur auf zuvor leeren Feldern), Gießerei
+- [x] Bohrer Mk2 (doppelt so schnell), ersetzt alte Bohrer per Antippen
+- [ ] Offen: schönere Modelle für die neuen Gebäude, Band Mk2, Blueprints
+
+### Nächster Schritt
+
+Band-Geschwindigkeitsstufen, Blueprints, Statistiken.

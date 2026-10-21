@@ -12,3 +12,4 @@ export {
 } from "./belts";
 export { assemblerModel, extractorModel, hubModel, smelterModel } from "./buildings";
 export { itemGeometry, itemMaterial } from "./items";
+export { extractorMk2Model, foundryModel, mergerModel, splitterModel, tunnelModel } from "./logistics";

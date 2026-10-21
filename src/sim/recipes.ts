@@ -1,6 +1,6 @@
 import type { ItemId } from "./items";
 
-export type MachineKind = "smelter" | "assembler";
+export type MachineKind = "smelter" | "assembler" | "foundry";
 
 export interface ItemStack {
   item: ItemId;
@@ -53,6 +53,37 @@ export const RECIPES: readonly Recipe[] = [
     ],
     outputs: [{ item: "circuit", count: 1 }],
     ticks: 20,
+  },
+  {
+    id: "steel",
+    machine: "foundry",
+    inputs: [
+      { item: "iron_ore", count: 1 },
+      { item: "coal", count: 1 },
+    ],
+    outputs: [{ item: "steel", count: 1 }],
+    ticks: 40,
+  },
+  {
+    id: "motor",
+    machine: "assembler",
+    inputs: [
+      { item: "steel", count: 1 },
+      { item: "gear", count: 2 },
+      { item: "wire", count: 4 },
+    ],
+    outputs: [{ item: "motor", count: 1 }],
+    ticks: 60,
+  },
+  {
+    id: "control_unit",
+    machine: "assembler",
+    inputs: [
+      { item: "circuit", count: 3 },
+      { item: "steel", count: 1 },
+    ],
+    outputs: [{ item: "control_unit", count: 1 }],
+    ticks: 60,
   },
 ];
 

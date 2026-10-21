@@ -1,6 +1,6 @@
 import type { ItemId } from "./items";
 
-export type OreId = Extract<ItemId, "iron_ore" | "copper_ore">;
+export type OreId = Extract<ItemId, "iron_ore" | "copper_ore" | "coal">;
 
 const SEED = 1337;
 
@@ -8,6 +8,8 @@ const SEED = 1337;
 const STARTER_PATCHES: { ore: OreId; x: number; y: number; r: number }[] = [
   { ore: "iron_ore", x: -6, y: -1, r: 2.3 },
   { ore: "copper_ore", x: 6, y: 2, r: 2.3 },
+  // Kohle kam mit den Hub-Stufen dazu; liegt auf zuvor leeren Feldern.
+  { ore: "coal", x: 1, y: 9, r: 1.8 },
 ];
 
 /** Freie Zone um den Ursprung (ausser den Start-Vorkommen). */
@@ -24,7 +26,11 @@ export function oreAt(x: number, y: number): OreId | null {
   if (Math.hypot(x, y) < CLEAR_RADIUS) return null;
 
   const n = valueNoise(x / 7, y / 7, SEED) * 0.7 + valueNoise(x / 3, y / 3, SEED + 1) * 0.3;
-  if (n < 0.72) return null;
+  if (n < 0.72) {
+    // Kohle nur dort, wo vorher nichts lag, damit alte Bohrer ihr Erz behalten.
+    const k = valueNoise(x / 6, y / 6, SEED + 3) * 0.7 + valueNoise(x / 2.5, y / 2.5, SEED + 4) * 0.3;
+    return k > 0.76 ? "coal" : null;
+  }
   return valueNoise(x / 40, y / 40, SEED + 2) < 0.5 ? "iron_ore" : "copper_ore";
 }
 

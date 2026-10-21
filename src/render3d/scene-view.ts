@@ -30,14 +30,19 @@ import {
   createBeltTexture,
   curveBedGeometry,
   curveFrameGeometry,
+  extractorMk2Model,
   extractorModel,
+  foundryModel,
   hubModel,
   itemGeometry,
   itemMaterial,
   mat,
+  mergerModel,
   smelterModel,
+  splitterModel,
   straightBedGeometry,
   straightFrameGeometry,
+  tunnelModel,
 } from "./models";
 import { PALETTE } from "./palette";
 import { TerrainView } from "./terrain";
@@ -255,10 +260,11 @@ export class SceneView {
   }
 
   private createNode(e: Exclude<Entity, Belt>): EntityNode {
-    let tpl = this.templates.get(e.type);
+    const tplKey = templateKey(e);
+    let tpl = this.templates.get(tplKey);
     if (!tpl) {
-      tpl = buildTemplate(e.type);
-      this.templates.set(e.type, tpl);
+      tpl = buildTemplate(e);
+      this.templates.set(tplKey, tpl);
     }
     const root = tpl.clone();
     const own: MeshStandardMaterial[] = [];
@@ -293,9 +299,10 @@ export class SceneView {
       if (!e) continue;
       const root = node.root;
       switch (e.type) {
-        case "extractor": {
+        case "extractor":
+        case "extractor_mk2": {
           // Dreht beim Foerdern, bremst aus, wenn der Ausgang verstopft ist.
-          const target = e.working ? 7 : 0;
+          const target = e.working ? (e.type === "extractor_mk2" ? 12 : 7) : 0;
           node.spin += (target - node.spin) * Math.min(1, dt * 3);
           const head = root.getObjectByName("head")!;
           head.rotation.y += node.spin * dt;
@@ -315,6 +322,12 @@ export class SceneView {
             puff.scale.setScalar(0.6 + phase * 1.4);
             i++;
           }
+          break;
+        }
+        case "foundry": {
+          const glow = node.own[0];
+          const target = e.crafting ? 1.8 + 0.4 * Math.sin(t * 7 + id) : 0.05;
+          glow.emissiveIntensity += (target - glow.emissiveIntensity) * Math.min(1, dt * 4);
           break;
         }
         case "assembler": {
@@ -378,13 +391,27 @@ function beltVariant(b: Belt, input: Dir): BeltVariant {
 }
 
 function nodeKey(e: Entity): string {
-  return `${e.type}:${e.dir}`;
+  return `${templateKey(e)}:${e.dir}`;
 }
 
-function buildTemplate(type: Exclude<Entity, Belt>["type"]): Group {
-  switch (type) {
+function templateKey(e: Entity): string {
+  return e.type === "tunnel" ? `tunnel:${e.exit ? "out" : "in"}` : e.type;
+}
+
+function buildTemplate(e: Exclude<Entity, Belt>): Group {
+  switch (e.type) {
     case "extractor":
       return extractorModel();
+    case "extractor_mk2":
+      return extractorMk2Model();
+    case "foundry":
+      return foundryModel();
+    case "splitter":
+      return splitterModel();
+    case "merger":
+      return mergerModel();
+    case "tunnel":
+      return tunnelModel(e.exit);
     case "smelter":
       return smelterModel();
     case "assembler":

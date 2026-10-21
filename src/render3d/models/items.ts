@@ -33,6 +33,16 @@ export function itemGeometry(item: ItemId): BufferGeometry {
   const c = ITEM_COLORS[item];
   const p = new Paint();
   switch (item) {
+    case "coal": {
+      const big = new DodecahedronGeometry(0.1);
+      big.rotateY(1.1);
+      big.translate(0, 0.08, 0);
+      p.add(big, c);
+      const small = new DodecahedronGeometry(0.065);
+      small.translate(-0.08, 0.05, 0.05);
+      p.add(small, shade(c, 0.06));
+      return p.build();
+    }
     case "iron_ore":
     case "copper_ore": {
       // Brocken aus drei Steinen; Kupfererz mit gruenlichen Adern.
@@ -82,10 +92,45 @@ export function itemGeometry(item: ItemId): BufferGeometry {
       p.add(boxG(0.22, 0.003, 0.012, 0, 0.03, 0.085), 0xe8c060);
       return p.build();
     }
+    case "steel": {
+      // Stahltraeger (I-Profil).
+      p.add(boxG(0.28, 0.025, 0.12), shade(c, -0.08));
+      p.add(boxG(0.28, 0.08, 0.03, 0, 0.025, 0), c);
+      p.add(boxG(0.28, 0.025, 0.12, 0, 0.105, 0), shade(c, 0.06));
+      return p.build();
+    }
+    case "motor": {
+      // Gehaeuse liegend mit Kuehlrippen und Welle.
+      const body = cylG(0.085, 0.085, 0.2, 10);
+      body.rotateZ(Math.PI / 2);
+      body.translate(0, 0.09, 0);
+      p.add(body, c);
+      for (const x of [-0.06, 0, 0.06]) {
+        const fin = cylG(0.095, 0.095, 0.015, 10);
+        fin.rotateZ(Math.PI / 2);
+        fin.translate(x, 0.09, 0);
+        p.add(fin, shade(c, 0.1));
+      }
+      const shaft = cylG(0.02, 0.02, 0.08, 6);
+      shaft.rotateZ(Math.PI / 2);
+      shaft.translate(0.14, 0.09, 0);
+      p.add(shaft, 0xb4bcc6);
+      p.add(boxG(0.16, 0.02, 0.12), 0x3a4250);
+      return p.build();
+    }
+    case "control_unit": {
+      // Gehaeuse mit Display und Knoepfen.
+      p.add(boxG(0.22, 0.12, 0.18), c);
+      p.add(boxG(0.14, 0.004, 0.08, -0.02, 0.12, 0), 0x9fd8f0);
+      p.add(cylG(0.015, 0.015, 0.02, 6, 0.08, 0.12, -0.05), 0xc2512f);
+      p.add(cylG(0.015, 0.015, 0.02, 6, 0.08, 0.12, 0.05), 0x3fae5a);
+      return p.build();
+    }
   }
 }
 
 export function itemMaterial(item: ItemId) {
-  const metal = item === "iron_plate" || item === "copper_plate" || item === "gear" || item === "wire";
+  const metal =
+    item === "iron_plate" || item === "copper_plate" || item === "gear" || item === "wire" || item === "steel";
   return metal ? paintMetalMat : paintMat;
 }
