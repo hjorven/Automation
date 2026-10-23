@@ -10,7 +10,7 @@ import { Hud, Toasts, showTierBanner } from "./hud";
 import { Overview, type OverviewTab } from "./overview";
 import { Panel } from "./panel";
 import { DeliveryStats } from "./stats";
-import { Toolbar } from "./toolbar";
+import { Toolbar, type Thumbs } from "./toolbar";
 import { Tutorial } from "./tutorial";
 
 const ERROR_TEXT: Record<string, string> = {
@@ -25,7 +25,7 @@ const ERROR_TEXT: Record<string, string> = {
  * Werkzeugleiste, Info-Panel, Uebersicht und Tutorial.
  */
 export class Ui {
-  private readonly thumbs = renderThumbnails();
+  private readonly thumbs: Thumbs = renderThumbnails();
   private readonly toolbar: Toolbar;
   private readonly hud: Hud;
   private readonly panel: Panel;

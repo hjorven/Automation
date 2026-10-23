@@ -190,6 +190,8 @@ function status(e: Entity, w: Editor["world"]): Status {
       return e.buffer !== null ? { text: "In Betrieb", cls: "ok" } : { text: "Leer", cls: "" };
     case "hub":
       return { text: `Stufe ${w.tier}`, cls: "ok" };
+    default:
+      return { text: "", cls: "" };
   }
 }
 
