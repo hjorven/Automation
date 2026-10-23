@@ -237,7 +237,7 @@ export function assemblerModel(): Group {
 }
 
 /** Armglied als Balken von a nach b in der x-y-Ebene. */
-function limb(p: Paint, a: [number, number], b: [number, number], t: number, color: number) {
+export function limb(p: Paint, a: [number, number], b: [number, number], t: number, color: number) {
   const dx = b[0] - a[0];
   const dy = b[1] - a[1];
   const g = boxG(Math.hypot(dx, dy), t, t, 0, -t / 2, 0);

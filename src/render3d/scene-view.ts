@@ -15,7 +15,7 @@ import {
 } from "three";
 import { BELT_SPEED, TICKS_PER_SECOND } from "../sim/constants";
 import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "../sim/dir";
-import type { Belt, BeltItem, Entity } from "../sim/entities";
+import { Storage, type Belt, type BeltItem, type Entity } from "../sim/entities";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import type { World } from "../sim/world";
 import type { CameraRig } from "./camera-rig";
@@ -27,16 +27,24 @@ import {
   curveBedGeometry,
   curveFrameGeometry,
   extractorMk2Model,
+  extractorMk3Model,
   extractorModel,
   foundryModel,
+  generatorCoalModel,
+  generatorFuelModel,
   hubModel,
   itemGeometry,
   itemMaterial,
+  manufacturerModel,
   mat,
   mergerModel,
   placeholderModel,
+  pumpModel,
+  refineryModel,
   smelterModel,
+  sorterModel,
   splitterModel,
+  storageModel,
   straightBedGeometry,
   straightFrameGeometry,
   tunnelModel,
@@ -47,13 +55,21 @@ import { TerrainView } from "./terrain";
 
 type BeltVariant = 0 | 1 | 2; // gerade, Kurve von links, Kurve von rechts
 
+/** Schienenfarbe je Bandstufe (Mk1 bis Mk3). */
+const BELT_RAILS = [PALETTE.beltRail, PALETTE.beltRailMk2, PALETTE.beltRailMk3];
+/** Instanz-Gruppe je Bandstufe und Variante. */
+const beltSlot = (level: 1 | 2 | 3, v: BeltVariant) => (level - 1) * 3 + v;
+
 interface EntityNode {
   root: Group;
   key: string;
   /** Eigene (nicht geteilte) Materialien, die beim Entfernen freigegeben werden. */
   own: MeshStandardMaterial[];
+  /** Item des schwebenden Symbols (Rezept oder Filter). */
   recipeId?: string | null;
   spin: number;
+  /** Laufender Winkel fuer Pumpe und Kolben. */
+  phase: number;
 }
 
 /** Waechst bei Bedarf; zeichnet nur die ersten `count` Instanzen. */
@@ -111,7 +127,8 @@ export class SceneView {
   private lastTier = -1;
   private flightStart = -Infinity;
 
-  private readonly beltTexture = createBeltTexture();
+  /** Je Bandstufe eine Textur, damit jede in ihrem Tempo laeuft. */
+  private readonly beltTextures = [createBeltTexture(), createBeltTexture(), createBeltTexture()];
   private readonly beltBeds: GrowingInstances[];
   private readonly beltFrames: GrowingInstances[];
   private readonly items = new Map<ItemId, GrowingInstances>();
@@ -129,16 +146,20 @@ export class SceneView {
     this.env = new Environment(sc);
     sc.add(this.terrain.group, this.entitiesGroup);
 
-    const bedMat = new MeshStandardMaterial({ map: this.beltTexture, roughness: 0.9, side: DoubleSide });
-    const frameMat = mat(PALETTE.beltRail, { rough: 0.6 });
     const beltRoot = new Group();
     sc.add(beltRoot);
-    this.beltBeds = [straightBedGeometry(), curveBedGeometry(false), curveBedGeometry(true)].map(
-      (g) => new GrowingInstances(beltRoot, g, bedMat),
-    );
-    this.beltFrames = [straightFrameGeometry(), curveFrameGeometry(false), curveFrameGeometry(true)].map(
-      (g) => new GrowingInstances(beltRoot, g, frameMat),
-    );
+    this.beltBeds = [];
+    this.beltFrames = [];
+    for (let level = 0; level < 3; level++) {
+      const bedMat = new MeshStandardMaterial({ map: this.beltTextures[level], roughness: 0.9, side: DoubleSide });
+      const frameMat = mat(BELT_RAILS[level], { rough: 0.6 });
+      for (const right of [null, false, true]) {
+        const bed = right === null ? straightBedGeometry() : curveBedGeometry(right);
+        const frame = right === null ? straightFrameGeometry() : curveFrameGeometry(right);
+        this.beltBeds.push(new GrowingInstances(beltRoot, bed, bedMat));
+        this.beltFrames.push(new GrowingInstances(beltRoot, frame, frameMat));
+      }
+    }
     for (const f of this.beltFrames) f.mesh.receiveShadow = true;
 
     const itemRoot = new Group();
@@ -168,7 +189,10 @@ export class SceneView {
       this.terrain.setOccupied((x, y) => world.entityAt(x, y) !== undefined);
     }
 
-    this.beltTexture.offset.x = -((t * BELT_SPEED * TICKS_PER_SECOND) % 1);
+    // Mk2 laeuft doppelt, Mk3 viermal so schnell (wie Belt.speed).
+    [1, 2, 4].forEach((k, i) => {
+      this.beltTextures[i].offset.x = -((t * k * BELT_SPEED * TICKS_PER_SECOND) % 1);
+    });
     this.animate(world, t, dt);
     this.drawItems(world, alpha);
 
@@ -193,28 +217,28 @@ export class SceneView {
 
   private syncEntities(world: World) {
     // Baender: alle Instanz-Matrizen neu (billig, passiert nur bei Bauaenderungen).
-    const counts = [0, 0, 0];
-    const belts: [Belt, BeltVariant][] = [];
+    const counts = this.beltBeds.map(() => 0);
+    const belts: [Belt, number][] = [];
     for (const e of world.entities.values()) {
       if (e.type !== "belt") continue;
-      const v = beltVariant(e, world.beltInputSide(e));
-      counts[v]++;
-      belts.push([e, v]);
+      const slot = beltSlot(e.level, beltVariant(e, world.beltInputSide(e)));
+      counts[slot]++;
+      belts.push([e, slot]);
     }
-    counts.forEach((n, v) => {
-      this.beltBeds[v].ensure(n);
-      this.beltFrames[v].ensure(n);
+    counts.forEach((n, i) => {
+      this.beltBeds[i].ensure(n);
+      this.beltFrames[i].ensure(n);
     });
-    const used = [0, 0, 0];
-    for (const [b, v] of belts) {
+    const used = counts.map(() => 0);
+    for (const [b, i] of belts) {
       this.compose(b.x + 0.5, 0, b.y + 0.5, yawOf(b.dir));
-      this.beltBeds[v].mesh.setMatrixAt(used[v], this.m);
-      this.beltFrames[v].mesh.setMatrixAt(used[v], this.m);
-      used[v]++;
+      this.beltBeds[i].mesh.setMatrixAt(used[i], this.m);
+      this.beltFrames[i].mesh.setMatrixAt(used[i], this.m);
+      used[i]++;
     }
-    used.forEach((n, v) => {
-      this.beltBeds[v].commit(n);
-      this.beltFrames[v].commit(n);
+    used.forEach((n, i) => {
+      this.beltBeds[i].commit(n);
+      this.beltFrames[i].commit(n);
     });
 
     // Uebrige Gebaeude als eigene Modelle.
@@ -229,12 +253,16 @@ export class SceneView {
         node = this.createNode(e);
         this.nodes.set(e.id, node);
       }
-      if (e.type === "assembler") {
-        const rid = e.recipe?.id ?? null;
-        if (node.recipeId !== rid) {
-          node.recipeId = rid;
-          setIcon(node.root.getObjectByName("icon")!, e.recipe?.outputs[0]?.item ?? null);
-        }
+      // Schwebendes Symbol: Rezept-Ergebnis bzw. Filter des Sortierers.
+      const shown =
+        e.type === "assembler" || e.type === "refinery" || e.type === "manufacturer"
+          ? (e.recipe?.outputs[0]?.item ?? null)
+          : e.type === "sorter"
+            ? e.filter
+            : undefined;
+      if (shown !== undefined && node.recipeId !== shown) {
+        node.recipeId = shown;
+        setIcon(node.root.getObjectByName("icon")!, shown);
       }
     }
   }
@@ -269,7 +297,7 @@ export class SceneView {
     root.position.set(e.x + 0.5, 0, e.y + 0.5);
     root.rotation.y = yawOf(e.dir);
     this.entitiesGroup.add(root);
-    return { root, key: nodeKey(e), own, spin: 0 };
+    return { root, key: nodeKey(e), own, spin: 0, phase: 0 };
   }
 
   private removeNode(id: number) {
@@ -287,28 +315,89 @@ export class SceneView {
       const root = node.root;
       switch (e.type) {
         case "extractor":
-        case "extractor_mk2": {
+        case "extractor_mk2":
+        case "extractor_mk3": {
           // Dreht beim Foerdern, bremst aus, wenn der Ausgang verstopft ist.
-          const target = e.working ? (e.type === "extractor_mk2" ? 12 : 7) : 0;
+          const target = e.working ? EXTRACTOR_SPIN[e.type] : 0;
           node.spin += (target - node.spin) * Math.min(1, dt * 3);
           const head = root.getObjectByName("head")!;
           head.rotation.y += node.spin * dt;
           head.position.y = 0.56 + (e.working ? Math.sin(t * 18 + id) * 0.012 : 0);
+          if (e.type === "extractor_mk3") {
+            const coil = root.getObjectByName("coil")!;
+            coil.rotation.y -= node.spin * 0.6 * dt;
+            coil.position.y = 0.5 + Math.sin(t * 3 + id) * 0.03;
+          }
+          break;
+        }
+        case "pump": {
+          // Pferdekopf nickt, solange Oel gefoerdert wird; laeuft weich aus.
+          node.spin += ((e.working ? 2.4 : 0) - node.spin) * Math.min(1, dt * 2);
+          node.phase += node.spin * dt;
+          root.getObjectByName("beam")!.rotation.z = Math.sin(node.phase) * 0.26;
+          root.getObjectByName("crank")!.rotation.z = -node.phase;
+          break;
+        }
+        case "storage": {
+          const fill = root.getObjectByName("fill")!;
+          fill.scale.y = Math.max(0.02, e.queue.length / Storage.CAPACITY);
+          break;
+        }
+        case "sorter": {
+          // Weiche zeigt geradeaus fuer gefilterte Items, sonst zur Seite.
+          const busy = e.buffer !== null;
+          const target = !busy || e.buffer === e.filter ? 0 : e.next % 2 ? -0.7 : 0.7;
+          const flap = root.getObjectByName("flap")!;
+          flap.rotation.y += (target - flap.rotation.y) * Math.min(1, dt * 10);
+          const laser = node.own[0];
+          laser.emissiveIntensity = busy ? 1.6 : 0.5 + 0.2 * Math.sin(t * 6 + id);
+          const icon = root.getObjectByName("icon")!;
+          icon.rotation.y = t * 1.2;
+          break;
+        }
+        case "generator_coal":
+        case "generator_fuel": {
+          const on = e.burning;
+          node.spin += ((on ? 9 : 0) - node.spin) * Math.min(1, dt * 1.5);
+          const glow = node.own[0];
+          const target = on ? 1.4 + 0.5 * Math.sin(t * 11 + id) : 0.03;
+          glow.emissiveIntensity += (target - glow.emissiveIntensity) * Math.min(1, dt * 4);
+          smoke(root, on, t, id, root.userData.chimney, e.type === "generator_fuel" ? 1.4 : 0.8);
+          if (e.type === "generator_coal") {
+            root.getObjectByName("arm")!.rotation.z -= node.spin * dt;
+          } else {
+            node.phase += node.spin * 2.2 * dt;
+            let i = 0;
+            for (const c of root.children) {
+              if (c.name !== "piston") continue;
+              c.position.y = 0.43 + Math.sin(node.phase + (i % 2) * Math.PI) * 0.035 * Math.min(1, node.spin / 9);
+              i++;
+            }
+          }
+          break;
+        }
+        case "refinery": {
+          // Fackel flackert beim Raffinieren, sonst nur Zuendflamme.
+          const glow = node.own[0];
+          const target = e.crafting ? 1.8 + 0.6 * Math.sin(t * 13 + id) + 0.3 * Math.sin(t * 29) : 0.25;
+          glow.emissiveIntensity += (target - glow.emissiveIntensity) * Math.min(1, dt * 6);
+          spinIcon(root, t, id, 0.76);
+          break;
+        }
+        case "manufacturer": {
+          const target = e.crafting ? 4 : 0;
+          node.spin += (target - node.spin) * Math.min(1, dt * 4);
+          root.getObjectByName("arm")!.rotation.y += node.spin * dt;
+          root.getObjectByName("arm2")!.rotation.y -= node.spin * 1.3 * dt;
+          node.own[0].emissiveIntensity = e.crafting ? 1.2 + 0.4 * Math.sin(t * 8 + id) : 0.15;
+          spinIcon(root, t, id, 0.96);
           break;
         }
         case "smelter": {
           const glow = node.own[0];
           const target = e.crafting ? 1.6 + 0.5 * Math.sin(t * 9 + id) : 0.05;
           glow.emissiveIntensity += (target - glow.emissiveIntensity) * Math.min(1, dt * 4);
-          let i = 0;
-          for (const puff of root.children) {
-            if (puff.name !== "puff") continue;
-            const phase = (t * 0.6 + i / 3 + id * 0.37) % 1;
-            puff.visible = e.crafting;
-            puff.position.set(-0.3 + phase * 0.1, 0.72 + phase * 0.7, -0.28 - phase * 0.05);
-            puff.scale.setScalar(0.6 + phase * 1.4);
-            i++;
-          }
+          smoke(root, e.crafting, t, id, SMELTER_CHIMNEY);
           break;
         }
         case "foundry": {
@@ -321,9 +410,7 @@ export class SceneView {
           const target = e.crafting ? 5 : 0;
           node.spin += (target - node.spin) * Math.min(1, dt * 4);
           root.getObjectByName("arm")!.rotation.y += node.spin * dt;
-          const icon = root.getObjectByName("icon")!;
-          icon.rotation.y = t * 1.2;
-          icon.position.y = 0.92 + Math.sin(t * 2 + id) * 0.04;
+          spinIcon(root, t, id, 0.92);
           break;
         }
         case "hub": {
@@ -464,22 +551,53 @@ function buildTemplate(e: Exclude<Entity, Belt>): Group {
       return assemblerModel();
     case "hub":
       return hubModel();
+    case "extractor_mk3":
+      return extractorMk3Model();
+    case "pump":
+      return pumpModel();
+    case "storage":
+      return storageModel();
+    case "sorter":
+      return sorterModel();
+    case "generator_coal":
+      return generatorCoalModel();
+    case "generator_fuel":
+      return generatorFuelModel();
+    case "refinery":
+      return refineryModel();
+    case "manufacturer":
+      return manufacturerModel();
     default:
-      // Gebaeude der spaeten Stufen, bis es eigene Modelle gibt.
-      return placeholderModel(PLACEHOLDER_COLORS[e.type]);
+      // Neue Gebaeude, bis es eigene Modelle gibt.
+      return placeholderModel();
   }
 }
 
-const PLACEHOLDER_COLORS: Partial<Record<Entity["type"], number>> = {
-  storage: 0x8a6f4a,
-  sorter: 0x4f9a7a,
-  generator_coal: 0x45464a,
-  generator_fuel: 0xd9862a,
-  extractor_mk3: 0x8a5fd9,
-  pump: 0x1d1b22,
-  refinery: 0x4fa3d9,
-  manufacturer: 0x3f6fa8,
-};
+const EXTRACTOR_SPIN = { extractor: 7, extractor_mk2: 12, extractor_mk3: 18 };
+
+/** Schornstein der Schmelze (siehe smelterModel). */
+const SMELTER_CHIMNEY: [number, number, number] = [-0.3, 0.72, -0.28];
+
+/** Rauchwolken ("puff") steigen ab `from` auf; `rate` = Tempo. */
+function smoke(root: Object3D, active: boolean, t: number, id: number, from: [number, number, number], rate = 0.6) {
+  let i = 0;
+  for (const puff of root.children) {
+    if (puff.name !== "puff") continue;
+    const phase = (t * rate + i / 3 + id * 0.37) % 1;
+    puff.visible = active;
+    puff.position.set(from[0] + phase * 0.1, from[1] + phase * 0.7, from[2] - phase * 0.05);
+    puff.scale.setScalar(0.6 + phase * 1.4);
+    i++;
+  }
+}
+
+/** Schwebendes Rezept-Symbol dreht sich und wippt. */
+function spinIcon(root: Object3D, t: number, id: number, y: number) {
+  const icon = root.getObjectByName("icon")!;
+  icon.rotation.y = t * 1.2;
+  icon.position.y = y + Math.sin(t * 2 + id) * 0.04;
+}
+
 
 const iconGeos = new Map<ItemId, BufferGeometry>();
 

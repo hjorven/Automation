@@ -8,7 +8,7 @@ import { Paint, boxG, coneG, cylG, mesh } from "./kit";
 // buildings.ts: Group, zentriert, Boden y = 0, Ausgang nach +x.
 
 /** Kurzes Bandstueck von der Mitte zur Kante in Richtung `yaw` (0 = +x). */
-function beltStub(p: Paint, yaw: number, from = 0.12, to = 0.5, y = 0.1) {
+export function beltStub(p: Paint, yaw: number, from = 0.12, to = 0.5, y = 0.1) {
   const len = to - from;
   const parts: [BufferGeometry, number][] = [
     [boxG(len, 0.03, 0.3, from + len / 2, y, 0), P.beltBed],
@@ -23,7 +23,7 @@ function beltStub(p: Paint, yaw: number, from = 0.12, to = 0.5, y = 0.1) {
 }
 
 /** Pfeil auf der Oberseite, zeigt in Richtung `yaw`. */
-function arrowOn(p: Paint, yaw: number, y: number, r = 0.3) {
+export function arrowOn(p: Paint, yaw: number, y: number, r = 0.3) {
   const g = coneG(0.075, 0.14, 3, 0, -0.07, 0);
   g.rotateZ(-Math.PI / 2);
   g.translate(r, y, 0);
