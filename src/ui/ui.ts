@@ -18,6 +18,7 @@ const ERROR_TEXT: Record<string, string> = {
   cost: "Nicht genug im Hub-Lager",
   blocked: "Feld ist belegt",
   water: "Nicht auf Wasser",
+  ore: "Hier gibt es keinen passenden Rohstoff",
 };
 
 /**
@@ -32,6 +33,7 @@ export class Ui {
   private readonly overview: Overview;
   private readonly tutorial: Tutorial;
   private readonly toasts = new Toasts();
+  private readonly stats: DeliveryStats;
   private tier: number;
   private errorAt = 0;
   private storageVersion = -1;
@@ -42,7 +44,7 @@ export class Ui {
     private readonly editor: Editor,
     onMenu: () => void,
   ) {
-    const stats = new DeliveryStats(editor.world);
+    const stats = (this.stats = new DeliveryStats(editor.world));
     const unlocks = (tier: number) => this.unlocksHtml(tier);
     this.toolbar = new Toolbar(editor, this.thumbs, onMenu);
     this.hud = new Hud(editor, (tab) => this.openOverview(tab));
@@ -74,6 +76,7 @@ export class Ui {
   tick() {
     const w = this.editor.world;
     if (w.tier !== this.tier) this.onTierChange();
+    this.stats.sample();
     if (w.storageVersion !== this.storageVersion) {
       this.storageVersion = w.storageVersion;
       this.toolbar.refresh();

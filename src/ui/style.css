@@ -328,6 +328,29 @@ button.danger {
   gap: 4px;
   font-size: 12px;
 }
+#hud .power {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+#hud .power .bar .fill {
+  background: linear-gradient(90deg, rgba(255, 201, 74, 0.6), var(--warn));
+  box-shadow: 0 0 8px var(--warn);
+}
+#hud .power.low {
+  color: var(--bad);
+}
+#hud .power.low .bar .fill {
+  background: var(--bad);
+  box-shadow: 0 0 8px var(--bad);
+}
+#hud .power-note {
+  grid-column: 1 / -1;
+  font-weight: 600;
+}
 #hud .foot {
   display: flex;
   gap: 6px;
@@ -605,6 +628,30 @@ button.danger {
   margin-left: auto;
   font: 11px var(--mono);
   color: var(--faint);
+}
+#panel .filter-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(92px, 1fr));
+  gap: 4px;
+  max-height: 200px;
+  overflow-y: auto;
+}
+#panel .filter-grid button {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  min-height: 36px;
+  padding: 4px 6px;
+  font-size: 11px;
+  text-align: left;
+}
+#panel .filter-grid button span:last-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+#panel .filter-grid button.unknown {
+  opacity: 0.45;
 }
 #panel .io {
   display: grid;
@@ -1189,7 +1236,30 @@ button.danger {
     padding: 10px 12px;
   }
   #hud .next,
-  #hud .foot {
+  #hud .power {
+  margin-top: 10px;
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
+  align-items: center;
+  font-size: 12px;
+}
+#hud .power .bar .fill {
+  background: linear-gradient(90deg, rgba(255, 201, 74, 0.6), var(--warn));
+  box-shadow: 0 0 8px var(--warn);
+}
+#hud .power.low {
+  color: var(--bad);
+}
+#hud .power.low .bar .fill {
+  background: var(--bad);
+  box-shadow: 0 0 8px var(--bad);
+}
+#hud .power-note {
+  grid-column: 1 / -1;
+  font-weight: 600;
+}
+#hud .foot {
     display: none;
   }
   #panel {
