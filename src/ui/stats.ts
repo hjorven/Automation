@@ -9,27 +9,34 @@ export const BUCKETS = 60;
 const MINUTE_TICKS = 60 * TICKS_PER_SECOND;
 
 /**
- * Zaehlt Lieferungen an den Hub in 10-Sekunden-Fenstern (nur fuer diese
- * Sitzung). Das Lager selbst taugt dafuer nicht, weil Bauen und Upgrades es
- * wieder leeren.
+ * Lieferungen an den Hub in 10-Sekunden-Fenstern (nur fuer diese Sitzung).
+ * Liest `world.delivered` (steigt nur) und verbucht die Zuwaechse seit dem
+ * letzten Aufruf von `sample`.
  */
 export class DeliveryStats {
   private buckets: Map<ItemId, number>[] = [new Map()];
   private bucketStart: number;
   private readonly startTick: number;
+  private readonly seen: Map<ItemId, number>;
+  /** Geliefert seit Beginn der Sitzung. */
   readonly total = new Map<ItemId, number>();
 
   constructor(private readonly world: World) {
     this.startTick = this.bucketStart = world.tick;
-    // Lieferungen mitzaehlen, ohne die Simulation anzufassen.
-    const deliver = world.deliver.bind(world);
-    world.deliver = (item: ItemId) => {
-      deliver(item);
-      this.roll();
-      const b = this.buckets[this.buckets.length - 1];
-      b.set(item, (b.get(item) ?? 0) + 1);
-      this.total.set(item, (this.total.get(item) ?? 0) + 1);
-    };
+    this.seen = new Map(world.delivered);
+  }
+
+  /** Neue Lieferungen verbuchen; einige Male pro Sekunde aufrufen. */
+  sample() {
+    this.roll();
+    const b = this.buckets[this.buckets.length - 1];
+    for (const [item, n] of this.world.delivered) {
+      const d = n - (this.seen.get(item) ?? 0);
+      if (d <= 0) continue;
+      this.seen.set(item, n);
+      b.set(item, (b.get(item) ?? 0) + d);
+      this.total.set(item, (this.total.get(item) ?? 0) + d);
+    }
   }
 
   private roll() {

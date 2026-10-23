@@ -1,10 +1,11 @@
 import type { Editor } from "../game/editor";
-import type { Entity, Machine } from "../sim/entities";
+import { Extractor, Generator, Machine, Storage, type Entity } from "../sim/entities";
 import { TICKS_PER_SECOND } from "../sim/constants";
-import { MAX_TIER, TIERS, buildCost } from "../sim/progression";
+import { ITEM_ORDER, type ItemId } from "../sim/items";
+import { MAX_TIER, TIERS, buildCost, powerUse } from "../sim/progression";
 import { recipeById, recipesFor } from "../sim/recipes";
 import { TOOL_INFO, toolName } from "./catalog";
-import { byId, costChips, dot, itemLabel, itemName, recipeHtml, stackChips } from "./dom";
+import { byId, costChips, dot, fmt, itemLabel, itemName, recipeHtml, stackChips } from "./dom";
 import type { Thumbs } from "./toolbar";
 
 type Status = { text: string; cls: "ok" | "warn" | "bad" | "" };
@@ -33,16 +34,17 @@ export class Panel {
     const w = this.editor.world;
 
     const thumb = this.thumbs[e.type];
+    const title = e.type === "belt" && e.level > 1 ? `Förderband Mk${e.level}` : toolName(e.type);
     let html =
       `<div class="p-head">${thumb ? `<img src="${thumb}" alt="">` : `<span class="ph"></span>`}` +
-      `<div><div class="p-title">${toolName(e.type)}</div><div data-status></div></div>` +
+      `<div><div class="p-title">${title}</div><div data-status></div></div>` +
       `<button class="p-close" data-action="close" aria-label="Schließen">&#x2715;</button></div>`;
 
     if (e.type === "hub") {
       html += this.hubBody();
     } else {
       html += `<div class="p-text">${this.describe(e)}</div>`;
-      const recipes = e.type === "smelter" || e.type === "assembler" || e.type === "foundry" ? recipesFor(e.type) : [];
+      const recipes = e instanceof Machine ? recipesFor(e.type) : [];
       if (recipes.length > 1 && e.type !== "smelter") {
         html +=
           `<div class="section"><div class="caps">Rezept</div><div class="recipes">` +
@@ -54,10 +56,10 @@ export class Panel {
             })
             .join("") +
           `</div></div>`;
-      } else if (e.type === "smelter" || e.type === "foundry") {
-        const r = (e as Machine).recipe;
-        if (r) html += `<div class="section"><div class="caps">Rezept</div><div class="recipe-card">${recipeHtml(r)}</div></div>`;
+      } else if (e instanceof Machine && e.recipe) {
+        html += `<div class="section"><div class="caps">Rezept</div><div class="recipe-card">${recipeHtml(e.recipe)}</div></div>`;
       }
+      if (e.type === "sorter") html += this.filterPicker(e.filter);
       html += `<div class="section" data-live></div>`;
     }
 
@@ -85,7 +87,7 @@ export class Panel {
     if (s) s.innerHTML = st.text ? `<span class="pill ${st.cls}">${st.text}</span>` : "";
 
     const live = this.el.querySelector<HTMLElement>("[data-live]");
-    if (live) live.innerHTML = liveBody(e);
+    if (live) live.innerHTML = liveBody(e, w);
 
     if (e.type === "hub") {
       const next = TIERS[w.tier + 1];
@@ -106,15 +108,12 @@ export class Panel {
   }
 
   private describe(e: Entity): string {
-    switch (e.type) {
-      case "extractor":
-      case "extractor_mk2":
-        return `Fördert ${itemLabel(e.ore)}${e.type === "extractor_mk2" ? ", doppelt so schnell" : ""}.`;
-      case "tunnel":
-        return `${e.exit ? "Ausgang" : "Eingang"}. ${TOOL_INFO.tunnel}`;
-      default:
-        return TOOL_INFO[e.type] ?? "";
+    if (e instanceof Extractor) {
+      const speed = e.type === "extractor_mk2" ? ", doppelt so schnell" : e.type === "extractor_mk3" ? ", viermal so schnell" : "";
+      return `Fördert ${itemLabel(e.ore)}${speed}.`;
     }
+    if (e.type === "tunnel") return `${e.exit ? "Ausgang" : "Eingang"}. ${TOOL_INFO.tunnel}`;
+    return TOOL_INFO[e.type] ?? "";
   }
 
   private hubBody(): string {
@@ -139,11 +138,31 @@ export class Panel {
     return html;
   }
 
+  /** Item-Auswahl fuer den Sortierer: erst bekannte Items, der Rest ausgegraut. */
+  private filterPicker(current: ItemId | null): string {
+    const w = this.editor.world;
+    const known = (i: ItemId) => w.storage.has(i) || w.delivered.has(i);
+    const items = [...ITEM_ORDER].sort((a, b) => Number(known(b)) - Number(known(a)));
+    return (
+      `<div class="section"><div class="caps">Filter</div><div class="filter-grid">` +
+      `<button data-filter="" class="${current === null ? "active" : ""}">Keiner</button>` +
+      items
+        .map(
+          (i) =>
+            `<button data-filter="${i}" class="${current === i ? "active" : ""}${known(i) ? "" : " unknown"}" title="${itemName(i)}">` +
+            `${dot(i)}<span>${itemName(i)}</span></button>`,
+        )
+        .join("") +
+      `</div></div>`
+    );
+  }
+
   private onClick = (ev: MouseEvent) => {
     const btn = (ev.target as HTMLElement).closest("button");
     if (!btn) return;
     const ed = this.editor;
     if (btn.dataset.recipe) ed.setSelectedRecipe(recipeById(btn.dataset.recipe) ?? null);
+    else if (btn.dataset.filter !== undefined) ed.setSelectedFilter((btn.dataset.filter || null) as ItemId | null);
     else if (btn.dataset.action === "rotate") ed.rotateSelected();
     else if (btn.dataset.action === "delete") ed.deleteSelected();
     else if (btn.dataset.action === "close") ed.clearSelection();
@@ -167,24 +186,32 @@ export function tierTrack(tier: number): string {
 }
 
 function status(e: Entity, w: Editor["world"]): Status {
+  const slow = w.powerActive && powerUse(e.type) > 0 && w.power.factor < 1;
+  if (e instanceof Machine) {
+    if (!e.recipe) return { text: e.type === "smelter" ? "Wartet auf Erz" : "Kein Rezept", cls: "warn" };
+    if (e.crafting) return slow ? { text: "Zu wenig Strom", cls: "warn" } : { text: "Arbeitet", cls: "ok" };
+    const full = e.recipe.outputs.some((s) => (e.output.get(s.item) ?? 0) > s.count);
+    if (full) return { text: "Ausgang blockiert", cls: "bad" };
+    return { text: "Wartet auf Material", cls: "warn" };
+  }
+  if (e instanceof Extractor) {
+    if (e.buffer !== null) return { text: "Ausgang blockiert", cls: "bad" };
+    return slow ? { text: "Zu wenig Strom", cls: "warn" } : { text: "Fördert", cls: "ok" };
+  }
+  if (e instanceof Generator) {
+    if (!e.burning) return { text: `Kein ${itemName(e.spec.fuel)}`, cls: "bad" };
+    return { text: `${e.spec.power} MW`, cls: "ok" };
+  }
   switch (e.type) {
-    case "smelter":
-    case "assembler":
-    case "foundry": {
-      if (!e.recipe) return { text: e.type === "smelter" ? "Wartet auf Erz" : "Kein Rezept", cls: "warn" };
-      if (e.crafting) return { text: "Arbeitet", cls: "ok" };
-      const full = e.recipe.outputs.some((s) => (e.output.get(s.item) ?? 0) > s.count);
-      if (full) return { text: "Ausgang blockiert", cls: "bad" };
-      return { text: "Wartet auf Material", cls: "warn" };
-    }
-    case "extractor":
-    case "extractor_mk2":
-      return e.buffer !== null ? { text: "Ausgang blockiert", cls: "bad" } : { text: "Fördert", cls: "ok" };
     case "tunnel":
       if (e.exit) return { text: "Ausgang", cls: "" };
       return e.partner(w) ? { text: "Verbunden", cls: "ok" } : { text: "Kein Ausgang in Reichweite", cls: "bad" };
     case "belt":
       return e.items.length ? { text: `${e.items.length} Items`, cls: "ok" } : { text: "Leer", cls: "" };
+    case "storage":
+      return e.queue.length >= Storage.CAPACITY ? { text: "Voll", cls: "warn" } : e.queue.length ? { text: "Puffert", cls: "ok" } : { text: "Leer", cls: "" };
+    case "sorter":
+      return e.filter ? { text: `Filter: ${itemName(e.filter)}`, cls: "ok" } : { text: "Kein Filter", cls: "warn" };
     case "splitter":
     case "merger":
       return e.buffer !== null ? { text: "In Betrieb", cls: "ok" } : { text: "Leer", cls: "" };
@@ -195,29 +222,44 @@ function status(e: Entity, w: Editor["world"]): Status {
   }
 }
 
-function liveBody(e: Entity): string {
+function liveBody(e: Entity, w: Editor["world"]): string {
+  const bar = (pct: number) => `<div class="bar work"><div class="fill" style="width:${pct}%;transition:none"></div></div>`;
+  const use = w.powerActive ? powerUse(e.type) : 0;
+  const power = use ? `<span class="caps">Strom</span><span class="num">${use} MW</span>` : "";
+  if (e instanceof Machine) {
+    const pct = e.recipe && e.crafting ? (100 * e.progress) / e.recipe.ticks : 0;
+    return (
+      `<div class="io"><span class="caps">Eingang</span><span class="chips">${stackChips(e.input)}</span>` +
+      `<span class="caps">Ausgang</span><span class="chips">${stackChips(e.output)}</span>${power}</div>` +
+      bar(pct)
+    );
+  }
+  if (e instanceof Extractor) {
+    const pct = e.buffer !== null ? 100 : (100 * e.timer) / e.interval;
+    const perMin = (60 * TICKS_PER_SECOND) / e.interval;
+    return `<div class="io"><span class="caps">Rate</span><span class="num">${fmt(perMin)} / min</span>${power}</div>` + bar(pct);
+  }
+  if (e instanceof Generator) {
+    return (
+      `<div class="io"><span class="caps">Brennstoff</span><span class="chips">${dot(e.spec.fuel)}<span class="num">${e.fuel}/${Generator.FUEL_CAPACITY}</span></span>` +
+      `<span class="caps">Leistung</span><span class="num">${e.spec.power} MW</span></div>` +
+      bar((100 * e.fuel) / Generator.FUEL_CAPACITY)
+    );
+  }
   switch (e.type) {
-    case "smelter":
-    case "assembler":
-    case "foundry": {
-      const pct = e.recipe && e.crafting ? (100 * e.progress) / e.recipe.ticks : 0;
-      return (
-        `<div class="io"><span class="caps">Eingang</span><span class="chips">${stackChips(e.input)}</span>` +
-        `<span class="caps">Ausgang</span><span class="chips">${stackChips(e.output)}</span></div>` +
-        `<div class="bar work"><div class="fill" style="width:${pct}%;transition:none"></div></div>`
-      );
-    }
-    case "extractor":
-    case "extractor_mk2": {
-      const pct = e.buffer !== null ? 100 : (100 * e.timer) / e.interval;
-      const perMin = (60 * TICKS_PER_SECOND) / e.interval;
-      return (
-        `<div class="io"><span class="caps">Rate</span><span class="num">${perMin} / min</span></div>` +
-        `<div class="bar work"><div class="fill" style="width:${pct}%;transition:none"></div></div>`
-      );
-    }
     case "tunnel":
       return e.exit ? "" : `<div class="io"><span class="caps">Unterwegs</span><span class="num">${e.transit.length}</span></div>`;
+    case "storage": {
+      const counts = new Map<ItemId, number>();
+      for (const i of e.queue) counts.set(i, (counts.get(i) ?? 0) + 1);
+      return (
+        `<div class="io"><span class="caps">Inhalt</span><span class="chips">${stackChips(counts)}</span>` +
+        `<span class="caps">Belegt</span><span class="num">${e.queue.length}/${Storage.CAPACITY}</span></div>` +
+        bar((100 * e.queue.length) / Storage.CAPACITY)
+      );
+    }
+    case "belt":
+      return `<div class="io"><span class="caps">Stufe</span><span>Mk${e.level}, ${fmt(2 * (e.level === 3 ? 4 : e.level))} Felder/s</span></div>`;
     default:
       return "";
   }

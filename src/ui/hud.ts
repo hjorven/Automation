@@ -2,7 +2,7 @@ import type { Editor } from "../game/editor";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import { MAX_TIER, TIERS, buildCost } from "../sim/progression";
 import { toolName } from "./catalog";
-import { byId, costChips, dot, itemName } from "./dom";
+import { byId, costChips, dot, fmt, itemName } from "./dom";
 
 const RING_R = 19;
 const RING_LEN = 2 * Math.PI * RING_R;
@@ -32,7 +32,7 @@ export class Hud {
     const w = this.editor.world;
     const items = ITEM_ORDER.filter((i) => w.storage.has(i));
     const tool = this.editor.tool;
-    const key = `${w.tier}|${tool}|${items.join(",")}`;
+    const key = `${w.tier}|${w.powerActive}|${tool}|${items.join(",")}`;
     if (key !== this.layoutKey) {
       this.layoutKey = key;
       this.render(items);
@@ -61,6 +61,12 @@ export class Hud {
       html += `</div><div class="ready-hint" hidden>Upgrade bereit: Hub antippen</div>`;
     } else {
       html += `<div class="ready-hint">Alle Stufen erreicht. Die Fabrik ist komplett!</div>`;
+    }
+
+    if (w.powerActive) {
+      html +=
+        `<div class="power" data-power><span class="caps">Strom</span><div class="bar"><div class="fill"></div></div>` +
+        `<span class="num"></span><span class="power-note" hidden></span></div>`;
     }
 
     const tool = this.editor.tool;
@@ -106,6 +112,18 @@ export class Hud {
       if (hint) hint.hidden = !ready;
     } else {
       this.el.querySelector<SVGCircleElement>(".arc")?.setAttribute("stroke-dashoffset", "0");
+    }
+
+    const power = this.el.querySelector<HTMLElement>("[data-power]");
+    if (power) {
+      const p = w.power;
+      const low = p.factor < 1;
+      power.classList.toggle("low", low);
+      power.querySelector<HTMLElement>(".fill")!.style.width = `${p.supply > 0 ? Math.min(100, (100 * p.demand) / p.supply) : 100}%`;
+      power.querySelector(".num")!.textContent = `${fmt(p.demand)}/${fmt(p.supply)} MW`;
+      const note = power.querySelector<HTMLElement>(".power-note")!;
+      note.hidden = !low;
+      if (low) note.textContent = `Zu wenig Strom: Maschinen laufen mit ${fmt(100 * p.factor)} %`;
     }
 
     const build = this.el.querySelector<HTMLElement>("[data-build]");

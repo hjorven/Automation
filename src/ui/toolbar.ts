@@ -9,6 +9,7 @@ import {
   toolGroup,
   toolName,
   toolShortName,
+  thumbId,
   toolTier,
   type ToolGroup,
 } from "./catalog";
@@ -20,7 +21,7 @@ export type Thumbs = Partial<Record<string, string>>;
 const LONG_PRESS_MS = 450;
 const HOVER_MS = 500;
 
-const GROUP_ORDER: ToolGroup[] = ["transport", "mining", "production", "base"];
+const GROUP_ORDER: ToolGroup[] = ["transport", "mining", "production", "power", "base"];
 
 /**
  * Werkzeugleiste unten: nach Gruppen sortiert, mit Kosten-Warnung,
@@ -60,7 +61,7 @@ export class Toolbar {
     const key = TOOL_KEYS[tool];
     return (
       `<button data-tool="${tool}">${key ? `<span class="key">${key.toUpperCase()}</span>` : ""}` +
-      `${this.icon(tool)}<span class="name">${toolShortName(tool)}</span></button>`
+      `${this.icon(thumbId(tool))}<span class="name">${toolShortName(tool)}</span></button>`
     );
   }
 
