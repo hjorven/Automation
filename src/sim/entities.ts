@@ -1,6 +1,7 @@
 import { BELT_SPEED, EXTRACT_TICKS, ITEM_SPACING, TUNNEL_RANGE } from "./constants";
 import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "./dir";
 import type { ItemId } from "./items";
+import { GENERATORS } from "./progression";
 import { smeltingRecipeFor, type MachineKind, type Recipe } from "./recipes";
 import type { OreId } from "./terrain";
 
@@ -9,11 +10,27 @@ export interface Host {
   readonly tick: number;
   entityAt(x: number, y: number): Entity | undefined;
   deliver(item: ItemId): void;
+  /** Anteil der Leistung, mit dem Strom-Verbraucher laufen (0..1). */
+  readonly powerFactor: number;
+  /** Auslastung der Kraftwerke (0..1): so schnell verbrennen sie Brennstoff. */
+  readonly powerLoad: number;
+  recipeUnlocked(r: Recipe): boolean;
 }
 
-export type ExtractorKind = "extractor" | "extractor_mk2";
+export type ExtractorKind = "extractor" | "extractor_mk2" | "extractor_mk3" | "pump";
+export type GeneratorKind = "generator_coal" | "generator_fuel";
 
-export type EntityType = "belt" | ExtractorKind | MachineKind | "hub" | "splitter" | "merger" | "tunnel";
+export type EntityType =
+  | "belt"
+  | ExtractorKind
+  | MachineKind
+  | GeneratorKind
+  | "hub"
+  | "splitter"
+  | "merger"
+  | "tunnel"
+  | "storage"
+  | "sorter";
 
 abstract class EntityBase {
   abstract readonly type: EntityType;
@@ -62,16 +79,35 @@ export class Belt extends EntityBase {
   readonly type = "belt";
   /** items[0] liegt am weitesten vorne. */
   items: BeltItem[] = [];
+  /** Bandstufe: Mk1 bis Mk3 laufen 1-, 2- und 4-mal so schnell (Durchsatz ebenso). */
+  level: 1 | 2 | 3 = 1;
+
+  get speed(): number {
+    return BELT_SPEED * (this.level === 3 ? 4 : this.level);
+  }
 
   accept(item: ItemId, side: Dir, host: Host): boolean {
     if (side === this.dir) return false;
-    const last = this.items[this.items.length - 1];
-    if (last && last.progress < ITEM_SPACING) return false;
+    const n = this.items.length;
+    const last = this.items[n - 1];
+    if (last) {
+      // Wo das letzte Item nach diesem Tick steht: Baender werden der Reihe nach
+      // aktualisiert, dieses hier vielleicht erst nach dem Lieferanten.
+      let pos = last.progress;
+      if (last.movedAt !== host.tick) {
+        const limit = n > 1 ? this.items[n - 2].progress - ITEM_SPACING : 1;
+        pos = Math.max(pos, Math.min(pos + this.speed, limit));
+      }
+      if (pos < ITEM_SPACING) return false;
+    }
     this.items.push({ item, progress: 0, prev: 0, entry: side, movedAt: host.tick });
     return true;
   }
 
   update(host: Host): void {
+    const speed = this.speed;
+    // Wie weit das vorderste Item ueber die Kante hinaus kaeme (fuer die Uebergabe).
+    let overshoot = 0;
     for (let i = 0; i < this.items.length; i++) {
       const it = this.items[i];
       // In diesem Tick bereits bewegt (gerade vom Vorgaenger uebergeben).
@@ -79,7 +115,10 @@ export class Belt extends EntityBase {
       it.movedAt = host.tick;
       it.prev = it.progress;
       const limit = i === 0 ? 1 : this.items[i - 1].progress - ITEM_SPACING;
-      it.progress = Math.max(it.progress, Math.min(it.progress + BELT_SPEED, limit));
+      if (i === 0) overshoot = Math.max(0, it.progress + speed - 1);
+      it.progress = Math.max(it.progress, Math.min(it.progress + speed, limit));
+      // Rundungsfehler (10 x 0.1 < 1) sollen keinen Extra-Tick kosten.
+      if (it.progress > 1 - 1e-9 && limit === 1) it.progress = 1;
     }
 
     const head = this.items[0];
@@ -88,8 +127,13 @@ export class Belt extends EntityBase {
     if (target && target.accept(head.item, opposite(this.dir), host)) {
       this.items.shift();
       if (target instanceof Belt) {
-        // Bewegung ueber die Feldgrenze hinweg fluessig weiterzeichnen.
-        target.items[target.items.length - 1].prev = head.prev - 1;
+        // Ueberschuss mitnehmen, damit schnelle Baender an Kanten nicht bremsen,
+        // und die Bewegung ueber die Feldgrenze fluessig weiterzeichnen.
+        const moved = target.items[target.items.length - 1];
+        const ahead = target.items[target.items.length - 2];
+        const max = ahead ? ahead.progress - ITEM_SPACING : 1;
+        moved.progress = Math.max(0, Math.min(overshoot, max, target.speed));
+        moved.prev = head.prev - 1;
       }
     }
   }
@@ -110,9 +154,11 @@ export class Extractor extends EntityBase {
     super(id, x, y, dir);
   }
 
-  /** Mk2 foerdert doppelt so schnell. */
+  /** Mk2 foerdert doppelt, Mk3 viermal so schnell; die Oelpumpe wie ein Bohrer. */
   get interval(): number {
-    return this.type === "extractor_mk2" ? EXTRACT_TICKS / 2 : EXTRACT_TICKS;
+    if (this.type === "extractor_mk2") return EXTRACT_TICKS / 2;
+    if (this.type === "extractor_mk3") return EXTRACT_TICKS / 4;
+    return EXTRACT_TICKS;
   }
 
   accept(): boolean {
@@ -124,8 +170,8 @@ export class Extractor extends EntityBase {
   }
 
   update(host: Host): void {
-    if (this.buffer === null && ++this.timer >= this.interval) {
-      this.timer = 0;
+    if (this.buffer === null && (this.timer += host.powerFactor) >= this.interval) {
+      this.timer -= this.interval;
       this.buffer = this.ore;
     }
     if (this.buffer !== null && this.pushForward(this.buffer, host)) this.buffer = null;
@@ -161,13 +207,13 @@ export class Machine extends EntityBase {
     return !this.crafting && this.input.size === 0 && this.output.size === 0;
   }
 
-  accept(item: ItemId, side: Dir): boolean {
+  accept(item: ItemId, side: Dir, host: Host): boolean {
     if (side === this.dir) return false;
 
     // Schmelzen stellen sich selbst auf das angelieferte Erz ein.
     if (this.type === "smelter" && this.idle && !this.recipe?.inputs.some((s) => s.item === item)) {
       const r = smeltingRecipeFor(item);
-      if (r) this.recipe = r;
+      if (r && host.recipeUnlocked(r)) this.recipe = r;
     }
 
     const need = this.recipe?.inputs.find((s) => s.item === item);
@@ -185,7 +231,7 @@ export class Machine extends EntityBase {
       this.crafting = true;
       this.progress = 0;
     }
-    if (r && this.crafting && ++this.progress >= r.ticks) {
+    if (r && this.crafting && (this.progress += host.powerFactor) >= r.ticks) {
       for (const s of r.outputs) this.output.set(s.item, (this.output.get(s.item) ?? 0) + s.count);
       this.crafting = false;
     }
@@ -344,10 +390,117 @@ export class Tunnel extends EntityBase {
   }
 }
 
+/** Lagerkiste: nimmt von hinten und den Seiten an, gibt der Reihe nach vorne aus. */
+export class Storage extends EntityBase {
+  readonly type = "storage";
+  static readonly CAPACITY = 200;
+  /** queue[0] kommt als Naechstes raus. */
+  queue: ItemId[] = [];
+
+  accept(item: ItemId, side: Dir): boolean {
+    if (side === this.dir || this.queue.length >= Storage.CAPACITY) return false;
+    this.queue.push(item);
+    return true;
+  }
+
+  update(host: Host): void {
+    if (this.queue.length && this.pushForward(this.queue[0], host)) this.queue.shift();
+  }
+}
+
+/**
+ * Sortierer: nimmt von hinten an. Das gefilterte Item geht nach vorne, alles
+ * andere abwechselnd nach links und rechts. Ohne Filter wie ein Verteiler.
+ */
+export class Sorter extends EntityBase {
+  readonly type = "sorter";
+  filter: ItemId | null = null;
+  buffer: ItemId | null = null;
+  next = 0;
+
+  private outputsFor(item: ItemId): Dir[] {
+    const sides = [rotateCCW(this.dir), rotateCW(this.dir)];
+    if (this.filter === null) return [this.dir, ...sides];
+    return item === this.filter ? [this.dir] : sides;
+  }
+
+  accept(item: ItemId, side: Dir): boolean {
+    if (side !== opposite(this.dir) || this.buffer !== null) return false;
+    this.buffer = item;
+    return true;
+  }
+
+  update(host: Host): void {
+    if (this.buffer === null) return;
+    const outs = this.outputsFor(this.buffer);
+    for (let i = 0; i < outs.length; i++) {
+      const k = (this.next + i) % outs.length;
+      const d = outs[k];
+      const target = host.entityAt(this.x + DX[d], this.y + DY[d]);
+      if (target && target.accept(this.buffer, opposite(d), host)) {
+        this.buffer = null;
+        this.next = (k + 1) % outs.length;
+        return;
+      }
+    }
+  }
+
+  outputsTo(x: number, y: number): boolean {
+    return [this.dir, rotateCCW(this.dir), rotateCW(this.dir)].some(
+      (d) => this.x + DX[d] === x && this.y + DY[d] === y,
+    );
+  }
+}
+
+/** Kraftwerk: verbrennt Kohle oder Treibstoff, so schnell wie Strom gebraucht wird. */
+export class Generator extends EntityBase {
+  static readonly FUEL_CAPACITY = 10;
+  fuel = 0;
+  /** Verbleibende Brenndauer der aktuellen Einheit (Ticks bei Volllast). */
+  burnLeft = 0;
+
+  constructor(
+    id: number,
+    x: number,
+    y: number,
+    dir: Dir,
+    readonly type: GeneratorKind,
+  ) {
+    super(id, x, y, dir);
+  }
+
+  get spec() {
+    return GENERATORS[this.type]!;
+  }
+
+  /** Liefert gerade Strom. */
+  get burning(): boolean {
+    return this.burnLeft > 0 || this.fuel > 0;
+  }
+
+  accept(item: ItemId): boolean {
+    if (item !== this.spec.fuel || this.fuel >= Generator.FUEL_CAPACITY) return false;
+    this.fuel++;
+    return true;
+  }
+
+  update(host: Host): void {
+    if (this.burnLeft <= 0 && this.fuel > 0 && host.powerLoad > 0) {
+      this.fuel--;
+      this.burnLeft += this.spec.burnTicks;
+    }
+    if (this.burnLeft > 0) this.burnLeft = Math.max(0, this.burnLeft - host.powerLoad);
+  }
+
+  outputsTo(): boolean {
+    return false;
+  }
+}
+
 /** Mindestabstand zweier Items im Tunnel, wie auf dem Band. */
 const TUNNEL_GAP = Math.ceil(ITEM_SPACING / BELT_SPEED);
 
-export type Entity = Belt | Extractor | Machine | Hub | Splitter | Merger | Tunnel;
+export type Entity = Belt | Extractor | Machine | Hub | Splitter | Merger | Tunnel | Storage | Sorter | Generator;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

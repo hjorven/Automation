@@ -32,6 +32,6 @@ describe("Bauen auf Wasser", () => {
     let spot: [number, number] | null = null;
     for (let x = 20; x < 200 && !spot; x++) if (waterAt(x, 0)) spot = [x, 0];
     expect(spot).not.toBeNull();
-    expect(w.buildError("belt", spot![0], spot![1])).toBe("blocked");
+    expect(w.buildError("belt", spot![0], spot![1])).toBe("water");
   });
 });

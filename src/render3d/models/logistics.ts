@@ -193,3 +193,20 @@ export function extractorMk2Model(): Group {
   root.add(p.mesh());
   return root;
 }
+
+// ---------------------------------------------------------------- Platzhalter
+
+/**
+ * Vorlaeufiges Modell fuer Gebaeude ohne eigenes Modell: Kiste mit Farbe und
+ * Pfeil zum Ausgang. Wird durch richtige Modelle ersetzt.
+ */
+export function placeholderModel(color: number = P.metal): Group {
+  const p = new Paint();
+  basePlate(p, 0.9, 0.08, P.metalDark);
+  p.add(boxG(0.64, 0.4, 0.64, 0, 0.08, 0), color);
+  p.add(boxG(0.68, 0.04, 0.68, 0, 0.48, 0), P.metalLight);
+  outputArrow(p, 0.2, 0.42);
+  const root = new Group();
+  root.add(p.mesh());
+  return root;
+}

@@ -22,6 +22,7 @@ import {
   iconModel,
   mat,
   mergerModel,
+  placeholderModel,
   smelterModel,
   splitterModel,
   tunnelModel,
@@ -80,6 +81,10 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["tunnel", () => tunnelModel(false)],
     ["foundry", foundryModel],
     ["extractor_mk2", extractorMk2Model],
+    // Vorlaeufig, bis es eigene Modelle gibt.
+    ...(["storage", "sorter", "generator_coal", "generator_fuel", "extractor_mk3", "pump", "refinery", "manufacturer"] as const).map(
+      (t): [ThumbnailId, () => Object3D] => [t, () => placeholderModel()],
+    ),
   ];
   for (const [type, build] of builders) {
     const model = build();

@@ -1,5 +1,5 @@
 import type { Dir } from "./dir";
-import type { Belt, Entity, EntityType } from "./entities";
+import { Generator, Storage, type Belt, type Entity, type EntityType } from "./entities";
 import { ITEM_ORDER, type ItemId } from "./items";
 import { MAX_TIER } from "./progression";
 import { recipeById } from "./recipes";
@@ -9,7 +9,7 @@ import { World } from "./world";
  * Versioniertes Spielstand-Format. Bei Aenderungen SAVE_VERSION erhoehen und
  * in `migrate` einen Schritt von der alten auf die neue Version ergaenzen.
  */
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 type Stacks = [ItemId, number][];
 
@@ -31,6 +31,15 @@ export interface SavedEntity {
   buffer?: ItemId | null;
   /** Splitter */
   next?: number;
+  /** Belt (seit v3) */
+  level?: number;
+  /** Lagerkiste */
+  queue?: ItemId[];
+  /** Sortierer */
+  filter?: ItemId | null;
+  /** Kraftwerk */
+  fuel?: number;
+  burnLeft?: number;
   /** Tunnel */
   exit?: boolean;
   transit?: [ItemId, number][];
@@ -50,6 +59,8 @@ export interface SaveData {
   tier: number;
   /** Hub-Lager (seit v2; v1 hatte stattdessen `delivered`). */
   storage: Stacks;
+  /** Insgesamt Abgeliefertes (seit v3). */
+  delivered?: Stacks;
   entities: SavedEntity[];
 }
 
@@ -61,6 +72,7 @@ export function serialize(world: World): SaveData {
     tick: world.tick,
     tier: world.tier,
     storage: [...world.storage],
+    delivered: [...world.delivered],
     entities,
   };
 }
@@ -69,10 +81,23 @@ function saveEntity(e: Entity): SavedEntity {
   const base: SavedEntity = { type: e.type, x: e.x, y: e.y, dir: e.dir };
   switch (e.type) {
     case "belt":
-      return { ...base, items: e.items.map((i) => ({ item: i.item, progress: i.progress, entry: i.entry })) };
+      return {
+        ...base,
+        level: e.level,
+        items: e.items.map((i) => ({ item: i.item, progress: i.progress, entry: i.entry })),
+      };
     case "extractor":
     case "extractor_mk2":
+    case "extractor_mk3":
+    case "pump":
       return { ...base, timer: e.timer, buffer: e.buffer };
+    case "storage":
+      return { ...base, queue: [...e.queue] };
+    case "sorter":
+      return { ...base, filter: e.filter, buffer: e.buffer, next: e.next };
+    case "generator_coal":
+    case "generator_fuel":
+      return { ...base, fuel: e.fuel, burnLeft: e.burnLeft };
     case "splitter":
       return { ...base, buffer: e.buffer, next: e.next };
     case "merger":
@@ -82,6 +107,8 @@ function saveEntity(e: Entity): SavedEntity {
     case "smelter":
     case "assembler":
     case "foundry":
+    case "refinery":
+    case "manufacturer":
       return {
         ...base,
         recipe: e.recipe?.id ?? null,
@@ -104,6 +131,9 @@ export function deserialize(raw: unknown): World {
   for (const [item, n] of data.storage) {
     if (isItem(item) && n > 0) w.storage.set(item, n);
   }
+  for (const [item, n] of data.delivered ?? []) {
+    if (isItem(item) && n > 0) w.delivered.set(item, n);
+  }
 
   for (const s of data.entities) {
     if (!isType(s.type) || !isDir(s.dir) || !Number.isInteger(s.x) || !Number.isInteger(s.y)) continue;
@@ -118,12 +148,28 @@ export function deserialize(raw: unknown): World {
 function restoreState(e: Entity, s: SavedEntity, tick: number) {
   switch (e.type) {
     case "belt":
+      e.level = s.level === 2 || s.level === 3 ? s.level : 1;
       restoreBelt(e, s.items ?? [], tick);
       break;
     case "extractor":
     case "extractor_mk2":
+    case "extractor_mk3":
+    case "pump":
       e.timer = num(s.timer);
       e.buffer = item(s.buffer);
+      break;
+    case "storage":
+      for (const i of s.queue ?? []) if (isItem(i) && e.queue.length < Storage.CAPACITY) e.queue.push(i);
+      break;
+    case "sorter":
+      e.filter = item(s.filter);
+      e.buffer = item(s.buffer);
+      e.next = Math.floor(num(s.next)) % 3;
+      break;
+    case "generator_coal":
+    case "generator_fuel":
+      e.fuel = Math.min(Generator.FUEL_CAPACITY, Math.max(0, Math.floor(num(s.fuel))));
+      e.burnLeft = Math.max(0, num(s.burnLeft));
       break;
     case "splitter":
       e.buffer = item(s.buffer);
@@ -142,6 +188,8 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
     case "smelter":
     case "assembler":
     case "foundry":
+    case "refinery":
+    case "manufacturer":
       for (const [item, n] of s.input ?? []) if (isItem(item) && n > 0) e.input.set(item, n);
       for (const [item, n] of s.output ?? []) if (isItem(item) && n > 0) e.output.set(item, n);
       e.progress = num(s.progress);
@@ -177,6 +225,14 @@ function migrate(raw: unknown): SaveData {
     delete v1.delivered;
     data.version = 2;
   }
+  if (data.version === 2) {
+    // v2 -> v3: 12 statt 6 Hub-Stufen. Alte Stufe auf die neue mit gleichem
+    // Inhalt abbilden (Stahl war 3, ist jetzt 4; Bohrer Mk2 war 4, ist jetzt 5).
+    const map = [0, 1, 2, 4, 5, 6];
+    data.tier = map[Math.min(map.length - 1, Math.max(0, Math.floor(num(data.tier))))];
+    data.delivered = data.storage;
+    data.version = 3;
+  }
   if (!Array.isArray(data.entities) || !Array.isArray(data.storage)) {
     throw new Error("Spielstand ist unvollständig");
   }
@@ -188,13 +244,21 @@ const TYPES = new Set<string>([
   "belt",
   "extractor",
   "extractor_mk2",
+  "extractor_mk3",
+  "pump",
   "smelter",
   "assembler",
   "foundry",
+  "refinery",
+  "manufacturer",
+  "generator_coal",
+  "generator_fuel",
   "hub",
   "splitter",
   "merger",
   "tunnel",
+  "storage",
+  "sorter",
 ]);
 const isType = (v: unknown): v is EntityType => typeof v === "string" && TYPES.has(v);
 const isItem = (v: unknown): v is ItemId => typeof v === "string" && ITEMS.has(v);

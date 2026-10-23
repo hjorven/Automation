@@ -3,16 +3,28 @@ import type { ItemId } from "./items";
 import type { ItemStack } from "./recipes";
 
 /**
+ * Was der Spieler bauen kann: alle Gebaeude plus die schnelleren Baender, die
+ * als Band (Entity-Typ "belt") mit hoeherer Stufe entstehen.
+ */
+export type BuildId = EntityType | "belt_mk2" | "belt_mk3";
+
+/** Bandstufe je Bau-Id (1 = normales Band). */
+export const BELT_LEVEL: Partial<Record<BuildId, 1 | 2 | 3>> = { belt: 1, belt_mk2: 2, belt_mk3: 3 };
+
+/**
  * Hub-Stufen wie in Satisfactory: Items im Hub-Lager ausgeben, um die naechste
- * Stufe zu erreichen. Jede Stufe schaltet Gebaeude und Rezepte frei.
+ * Stufe zu erreichen. Jede Stufe schaltet Gebaeude und Rezepte frei. Ausgelegt
+ * auf etwa 8 Stunden bis zur letzten Stufe.
  */
 export interface Tier {
   name: string;
   /** Kosten, um diese Stufe zu erreichen (Stufe 0 ist gratis). */
   cost: ItemStack[];
-  buildings: EntityType[];
+  buildings: BuildId[];
   recipes: string[];
 }
+
+const s = (item: ItemId, count: number): ItemStack => ({ item, count });
 
 export const TIERS: readonly Tier[] = [
   {
@@ -23,46 +35,67 @@ export const TIERS: readonly Tier[] = [
   },
   {
     name: "Fertigung",
-    cost: [
-      { item: "iron_plate", count: 20 },
-      { item: "copper_plate", count: 10 },
-    ],
+    cost: [s("iron_plate", 20), s("copper_plate", 10)],
     buildings: ["assembler"],
     recipes: ["gear", "wire"],
   },
   {
     name: "Logistik",
-    cost: [
-      { item: "gear", count: 25 },
-      { item: "wire", count: 40 },
-    ],
-    buildings: ["splitter", "merger", "tunnel"],
+    cost: [s("gear", 50), s("wire", 100), s("iron_plate", 50)],
+    buildings: ["splitter", "merger", "tunnel", "storage"],
     recipes: ["circuit"],
   },
   {
+    name: "Energie",
+    cost: [s("circuit", 100), s("iron_plate", 200), s("copper_plate", 100)],
+    buildings: ["generator_coal", "sorter"],
+    recipes: [],
+  },
+  {
     name: "Stahl",
-    cost: [
-      { item: "circuit", count: 30 },
-      { item: "gear", count: 30 },
-    ],
-    buildings: ["foundry"],
+    cost: [s("circuit", 200), s("gear", 300)],
+    buildings: ["foundry", "belt_mk2"],
     recipes: ["steel"],
   },
   {
-    name: "Maschinenbau",
-    cost: [
-      { item: "steel", count: 40 },
-      { item: "circuit", count: 40 },
-    ],
+    name: "Bauwesen",
+    cost: [s("steel", 400), s("circuit", 400)],
     buildings: ["extractor_mk2"],
-    recipes: ["motor", "control_unit"],
+    recipes: ["concrete", "reinforced_plate", "rotor"],
   },
   {
-    name: "Abschluss",
-    cost: [
-      { item: "motor", count: 20 },
-      { item: "control_unit", count: 20 },
-    ],
+    name: "Maschinenbau",
+    cost: [s("concrete", 200), s("reinforced_plate", 200), s("rotor", 150)],
+    buildings: ["manufacturer"],
+    recipes: ["motor", "control_unit", "heavy_frame"],
+  },
+  {
+    name: "Öl",
+    cost: [s("motor", 100), s("control_unit", 100), s("heavy_frame", 50)],
+    buildings: ["pump", "refinery", "generator_fuel"],
+    recipes: ["plastic", "rubber", "fuel"],
+  },
+  {
+    name: "Elektronik",
+    cost: [s("plastic", 400), s("rubber", 400), s("control_unit", 300)],
+    buildings: ["belt_mk3"],
+    recipes: ["smelt_silicon", "computer"],
+  },
+  {
+    name: "Chemie",
+    cost: [s("computer", 100), s("heavy_frame", 150)],
+    buildings: ["extractor_mk3"],
+    recipes: ["battery"],
+  },
+  {
+    name: "Leichtbau",
+    cost: [s("battery", 500), s("computer", 400)],
+    buildings: [],
+    recipes: ["aluminium", "alu_casing", "turbo_motor", "supercomputer"],
+  },
+  {
+    name: "Raumfrachter",
+    cost: [s("turbo_motor", 50), s("supercomputer", 50), s("heavy_frame", 300)],
     buildings: [],
     recipes: [],
   },
@@ -70,47 +103,62 @@ export const TIERS: readonly Tier[] = [
 
 export const MAX_TIER = TIERS.length - 1;
 
+/** Ab dieser Stufe zaehlt Strom (vorher laufen alle Maschinen voll). */
+export const POWER_TIER = 3;
+/** Grundversorgung durch den Hub in MW. */
+export const HUB_POWER = 60;
+
 /** Baukosten aus dem Hub-Lager; beim Abreissen gibt es sie zurueck. */
-export const BUILD_COSTS: Partial<Record<EntityType, ItemStack[]>> = {
-  hub: [
-    { item: "iron_plate", count: 20 },
-    { item: "copper_plate", count: 10 },
-  ],
-  assembler: [
-    { item: "iron_plate", count: 10 },
-    { item: "copper_plate", count: 5 },
-  ],
-  splitter: [
-    { item: "iron_plate", count: 2 },
-    { item: "gear", count: 2 },
-  ],
-  merger: [
-    { item: "iron_plate", count: 2 },
-    { item: "gear", count: 2 },
-  ],
-  tunnel: [
-    { item: "iron_plate", count: 4 },
-    { item: "gear", count: 2 },
-  ],
-  foundry: [
-    { item: "iron_plate", count: 10 },
-    { item: "gear", count: 6 },
-    { item: "circuit", count: 4 },
-  ],
-  extractor_mk2: [
-    { item: "steel", count: 4 },
-    { item: "gear", count: 4 },
-    { item: "circuit", count: 2 },
-  ],
+export const BUILD_COSTS: Partial<Record<BuildId, ItemStack[]>> = {
+  hub: [s("iron_plate", 20), s("copper_plate", 10)],
+  assembler: [s("iron_plate", 10), s("copper_plate", 5)],
+  splitter: [s("iron_plate", 2), s("gear", 2)],
+  merger: [s("iron_plate", 2), s("gear", 2)],
+  tunnel: [s("iron_plate", 4), s("gear", 2)],
+  storage: [s("iron_plate", 20), s("gear", 5)],
+  sorter: [s("gear", 4), s("circuit", 2)],
+  generator_coal: [s("iron_plate", 20), s("gear", 10), s("circuit", 5)],
+  foundry: [s("iron_plate", 10), s("gear", 6), s("circuit", 4)],
+  belt_mk2: [s("steel", 1)],
+  extractor_mk2: [s("steel", 4), s("gear", 4), s("circuit", 2)],
+  manufacturer: [s("reinforced_plate", 10), s("rotor", 6), s("concrete", 10)],
+  pump: [s("steel", 10), s("motor", 2), s("concrete", 10)],
+  refinery: [s("steel", 15), s("motor", 3), s("control_unit", 2)],
+  generator_fuel: [s("heavy_frame", 2), s("motor", 4), s("control_unit", 4)],
+  belt_mk3: [s("steel", 1), s("rubber", 1)],
+  extractor_mk3: [s("heavy_frame", 2), s("computer", 2), s("motor", 2)],
 };
 
-export function buildCost(type: EntityType): ItemStack[] {
-  return BUILD_COSTS[type] ?? [];
+/** Stromverbrauch in MW (ab POWER_TIER); fehlt ein Eintrag, braucht es keinen Strom. */
+export const POWER_USE: Partial<Record<EntityType, number>> = {
+  extractor: 4,
+  extractor_mk2: 10,
+  extractor_mk3: 25,
+  pump: 20,
+  smelter: 4,
+  assembler: 8,
+  foundry: 16,
+  refinery: 30,
+  manufacturer: 45,
+};
+
+/** Kraftwerke: Brennstoff, Leistung in MW und Brenndauer einer Einheit bei Volllast. */
+export const GENERATORS: Partial<Record<EntityType, { fuel: ItemId; power: number; burnTicks: number }>> = {
+  generator_coal: { fuel: "coal", power: 75, burnTicks: 80 },
+  generator_fuel: { fuel: "fuel", power: 150, burnTicks: 160 },
+};
+
+export function buildCost(id: BuildId): ItemStack[] {
+  return BUILD_COSTS[id] ?? [];
+}
+
+export function powerUse(type: EntityType): number {
+  return POWER_USE[type] ?? 0;
 }
 
 /** Stufe, ab der ein Gebaeude gebaut werden darf. */
-export function buildingTier(type: EntityType): number {
-  const i = TIERS.findIndex((t) => t.buildings.includes(type));
+export function buildingTier(id: BuildId): number {
+  const i = TIERS.findIndex((t) => t.buildings.includes(id));
   return i === -1 ? Infinity : i;
 }
 
@@ -120,5 +168,5 @@ export function recipeTier(id: string): number {
 }
 
 export function canAfford(storage: ReadonlyMap<ItemId, number>, cost: readonly ItemStack[]): boolean {
-  return cost.every((s) => (storage.get(s.item) ?? 0) >= s.count);
+  return cost.every((c) => (storage.get(c.item) ?? 0) >= c.count);
 }

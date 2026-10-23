@@ -1,13 +1,44 @@
 import { DX, DY, opposite, rotateCCW, rotateCW, tileKey, type Dir } from "./dir";
 import { TUNNEL_RANGE } from "./constants";
-import { Belt, Extractor, Hub, Machine, Merger, Splitter, Tunnel, type Entity, type EntityType, type Host } from "./entities";
+import {
+  Belt,
+  Extractor,
+  Generator,
+  Hub,
+  Machine,
+  Merger,
+  Sorter,
+  Splitter,
+  Storage,
+  Tunnel,
+  type Entity,
+  type EntityType,
+  type Host,
+} from "./entities";
 import type { ItemId } from "./items";
-import { MAX_TIER, TIERS, buildCost, buildingTier, canAfford, recipeTier } from "./progression";
+import {
+  BELT_LEVEL,
+  HUB_POWER,
+  MAX_TIER,
+  POWER_TIER,
+  TIERS,
+  buildCost,
+  buildingTier,
+  canAfford,
+  powerUse,
+  recipeTier,
+  type BuildId,
+} from "./progression";
 import { recipesFor, type ItemStack, type Recipe } from "./recipes";
 import { oreAt, waterAt } from "./terrain";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
-export type BuildError = "blocked" | "locked" | "cost";
+export type BuildError =
+  | "blocked" // Feld belegt
+  | "ore" // Bohrer/Pumpe ohne passenden Rohstoff darunter
+  | "water" // Feld liegt im Wasser
+  | "locked"
+  | "cost";
 
 export class World implements Host {
   tick = 0;
@@ -19,6 +50,13 @@ export class World implements Host {
   readonly storage = new Map<ItemId, number>();
   /** Steigt bei jeder Aenderung an Lager oder Stufe (fuer die UI). */
   storageVersion = 0;
+  /** Insgesamt Abgeliefertes, sinkt nie (fuer Statistiken). */
+  readonly delivered = new Map<ItemId, number>();
+
+  /** Strom in MW, jeden Tick neu berechnet. `factor` bremst Verbraucher bei Mangel. */
+  readonly power = { supply: 0, demand: 0, factor: 1 };
+  powerFactor = 1;
+  powerLoad = 0;
 
   readonly entities = new Map<number, Entity>();
   private readonly grid = new Map<string, Entity>();
@@ -36,17 +74,31 @@ export class World implements Host {
 
   deliver(item: ItemId) {
     this.storage.set(item, (this.storage.get(item) ?? 0) + 1);
+    this.delivered.set(item, (this.delivered.get(item) ?? 0) + 1);
     this.storageVersion++;
+  }
+
+  recipeUnlocked(r: Recipe): boolean {
+    return this.isRecipeUnlocked(r);
+  }
+
+  /** Strom zaehlt erst ab der Energie-Stufe. */
+  get powerActive(): boolean {
+    return this.tier >= POWER_TIER;
   }
 
   canPlace(type: EntityType, x: number, y: number): boolean {
     if (this.grid.has(tileKey(x, y))) return false;
-    if ((type === "extractor" || type === "extractor_mk2") && !oreAt(x, y)) return false;
+    const ore = oreAt(x, y);
+    if (type === "pump") return ore === "crude_oil";
+    if (type === "extractor" || type === "extractor_mk2" || type === "extractor_mk3") {
+      return !!ore && ore !== "crude_oil";
+    }
     return true;
   }
 
-  isUnlocked(type: EntityType): boolean {
-    return buildingTier(type) <= this.tier;
+  isUnlocked(id: BuildId): boolean {
+    return buildingTier(id) <= this.tier;
   }
 
   isRecipeUnlocked(r: Recipe): boolean {
@@ -58,38 +110,55 @@ export class World implements Host {
   }
 
   /** Warum `build` an dieser Stelle scheitern wuerde, sonst null. */
-  buildError(type: EntityType, x: number, y: number): BuildError | null {
-    if (!this.isUnlocked(type)) return "locked";
-    if (!this.canPlace(type, x, y)) return "blocked";
+  buildError(id: BuildId, x: number, y: number): BuildError | null {
+    if (!this.isUnlocked(id)) return "locked";
+    const type = entityTypeOf(id);
+    if (!this.canPlace(type, x, y)) return this.grid.has(tileKey(x, y)) ? "blocked" : "ore";
     // Nur fuer den Spieler: alte Spielstaende mit Gebaeuden auf heutigen Seen laden weiter.
-    if (waterAt(x, y)) return "blocked";
-    if (!this.canAfford(buildCost(type))) return "cost";
+    if (waterAt(x, y)) return "water";
+    if (!this.canAfford(buildCost(id))) return "cost";
     return null;
   }
 
   /** Bauen wie der Spieler: nur Freigeschaltetes, bezahlt aus dem Hub-Lager. */
-  build(type: EntityType, x: number, y: number, dir: Dir, recipe: Recipe | null = null): Entity | null {
-    if (this.buildError(type, x, y)) return null;
+  build(id: BuildId, x: number, y: number, dir: Dir, recipe: Recipe | null = null): Entity | null {
+    if (this.buildError(id, x, y)) return null;
     if (recipe && !this.isRecipeUnlocked(recipe)) recipe = null;
-    const e = this.place(type, x, y, dir, recipe);
-    if (e) this.pay(buildCost(type));
+    const e = this.place(entityTypeOf(id), x, y, dir, recipe);
+    if (!e) return null;
+    if (e instanceof Belt) e.level = BELT_LEVEL[id] ?? 1;
+    this.pay(buildCost(id));
     return e;
   }
 
   /** Abreissen wie der Spieler: Baukosten gehen zurueck ins Lager. */
   demolish(x: number, y: number): Entity | undefined {
     const e = this.remove(x, y);
-    if (e) this.refund(buildCost(e.type));
+    if (e) this.refund(buildCost(buildIdOf(e)));
     return e;
   }
 
-  /** Bohrer gegen Bohrer Mk2 tauschen (Richtung bleibt). */
-  upgradeExtractor(e: Entity): Entity | null {
-    if (e.type !== "extractor" || !this.isUnlocked("extractor_mk2")) return null;
-    const cost = buildCost("extractor_mk2");
+  /** Band auf eine hoehere Stufe bringen (zahlt die Differenz, gibt das alte zurueck). */
+  upgradeBelt(e: Entity, id: BuildId): boolean {
+    const level = BELT_LEVEL[id];
+    if (!(e instanceof Belt) || !level || e.level >= level || !this.isUnlocked(id)) return false;
+    const cost = buildCost(id);
+    if (!this.canAfford(cost)) return false;
+    this.refund(buildCost(buildIdOf(e)));
+    this.pay(cost);
+    e.level = level;
+    this.version++;
+    return true;
+  }
+
+  /** Bohrer gegen einen schnelleren tauschen (Richtung bleibt). */
+  upgradeExtractor(e: Entity, to: "extractor_mk2" | "extractor_mk3" = "extractor_mk2"): Entity | null {
+    const rank = { extractor: 1, extractor_mk2: 2, extractor_mk3: 3 } as Record<string, number>;
+    if (!(e instanceof Extractor) || !rank[e.type] || rank[e.type] >= rank[to] || !this.isUnlocked(to)) return null;
+    const cost = buildCost(to);
     if (!this.canAfford(cost)) return null;
     this.demolish(e.x, e.y);
-    const up = this.place("extractor_mk2", e.x, e.y, e.dir);
+    const up = this.place(to, e.x, e.y, e.dir);
     if (up) this.pay(cost);
     return up;
   }
@@ -128,13 +197,17 @@ export class World implements Host {
         break;
       case "extractor":
       case "extractor_mk2":
+      case "extractor_mk3":
+      case "pump":
         e = new Extractor(id, x, y, dir, oreAt(x, y)!, type);
         break;
       case "smelter":
       case "assembler":
-      case "foundry": {
-        // Maschinen mit nur einem Rezept stellen sich gleich darauf ein.
-        const only = recipesFor(type);
+      case "foundry":
+      case "refinery":
+      case "manufacturer": {
+        // Maschinen mit nur einem freigeschalteten Rezept stellen sich gleich darauf ein.
+        const only = recipesFor(type).filter((r) => this.isRecipeUnlocked(r));
         if (!recipe && type !== "smelter" && only.length === 1) recipe = only[0];
         e = new Machine(id, x, y, dir, type, recipe);
         break;
@@ -147,6 +220,16 @@ export class World implements Host {
         break;
       case "merger":
         e = new Merger(id, x, y, dir);
+        break;
+      case "storage":
+        e = new Storage(id, x, y, dir);
+        break;
+      case "sorter":
+        e = new Sorter(id, x, y, dir);
+        break;
+      case "generator_coal":
+      case "generator_fuel":
+        e = new Generator(id, x, y, dir, type);
         break;
       case "tunnel": {
         const t = new Tunnel(id, x, y, dir);
@@ -203,7 +286,27 @@ export class World implements Host {
 
   step() {
     this.tick++;
+    this.updatePower();
     for (const e of this.entities.values()) e.update(this);
+  }
+
+  /** Strombilanz aus dem Stand vor diesem Tick; setzt Leistungsfaktor und Auslastung. */
+  private updatePower() {
+    let demand = 0;
+    let supply = 0;
+    let hub = false;
+    for (const e of this.entities.values()) {
+      demand += powerUse(e.type);
+      if (e instanceof Generator && e.burning) supply += e.spec.power;
+      else if (e.type === "hub") hub = true;
+    }
+    if (hub) supply += HUB_POWER;
+    const p = this.power;
+    p.demand = demand;
+    p.supply = supply;
+    p.factor = !this.powerActive || demand <= supply ? 1 : supply / demand;
+    this.powerFactor = p.factor;
+    this.powerLoad = !this.powerActive ? 0 : supply > 0 ? Math.min(1, demand / supply) : 0;
   }
 
   /**
@@ -223,4 +326,15 @@ export class World implements Host {
     if (l !== feeds(right)) return l ? left : right;
     return back;
   }
+}
+
+/** Entity-Typ, den eine Bau-Id erzeugt (schnelle Baender sind Baender). */
+export function entityTypeOf(id: BuildId): EntityType {
+  return BELT_LEVEL[id] ? "belt" : (id as EntityType);
+}
+
+/** Bau-Id eines vorhandenen Gebaeudes (fuer Kosten beim Abreissen). */
+export function buildIdOf(e: Entity): BuildId {
+  if (e instanceof Belt) return e.level === 3 ? "belt_mk3" : e.level === 2 ? "belt_mk2" : "belt";
+  return e.type;
 }

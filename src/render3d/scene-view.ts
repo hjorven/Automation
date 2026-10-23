@@ -34,6 +34,7 @@ import {
   itemMaterial,
   mat,
   mergerModel,
+  placeholderModel,
   smelterModel,
   splitterModel,
   straightBedGeometry,
@@ -463,8 +464,22 @@ function buildTemplate(e: Exclude<Entity, Belt>): Group {
       return assemblerModel();
     case "hub":
       return hubModel();
+    default:
+      // Gebaeude der spaeten Stufen, bis es eigene Modelle gibt.
+      return placeholderModel(PLACEHOLDER_COLORS[e.type]);
   }
 }
+
+const PLACEHOLDER_COLORS: Partial<Record<Entity["type"], number>> = {
+  storage: 0x8a6f4a,
+  sorter: 0x4f9a7a,
+  generator_coal: 0x45464a,
+  generator_fuel: 0xd9862a,
+  extractor_mk3: 0x8a5fd9,
+  pump: 0x1d1b22,
+  refinery: 0x4fa3d9,
+  manufacturer: 0x3f6fa8,
+};
 
 const iconGeos = new Map<ItemId, BufferGeometry>();
 

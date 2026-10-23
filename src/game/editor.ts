@@ -1,9 +1,13 @@
 import { dirBetween, rotateCW, type Dir } from "../sim/dir";
-import type { Entity, EntityType } from "../sim/entities";
+import { Machine, type Entity } from "../sim/entities";
+import type { ItemId } from "../sim/items";
+import { BELT_LEVEL, type BuildId } from "../sim/progression";
 import type { Recipe } from "../sim/recipes";
-import type { BuildError, World } from "../sim/world";
+import { entityTypeOf, type BuildError, type World } from "../sim/world";
 
-export type Tool = "hand" | "delete" | EntityType;
+export type Tool = "hand" | "delete" | BuildId;
+
+const isBeltTool = (t: Tool) => t !== "hand" && t !== "delete" && !!BELT_LEVEL[t];
 
 interface Stroke {
   lastX: number;
@@ -81,10 +85,16 @@ export class Editor {
 
   setSelectedRecipe(recipe: Recipe | null) {
     const e = this.selected;
-    if (e?.type !== "assembler" && e?.type !== "foundry") return;
-    if (recipe && !this.world.isRecipeUnlocked(recipe)) return;
+    if (!(e instanceof Machine) || e.type === "smelter") return;
+    if (recipe && (recipe.machine !== e.type || !this.world.isRecipeUnlocked(recipe))) return;
     this.world.setRecipe(e, recipe);
     if (e.type === "assembler") this.assemblerRecipe = recipe;
+    this.emit();
+  }
+
+  setSelectedFilter(item: ItemId | null) {
+    const e = this.selected;
+    if (e?.type === "sorter") e.filter = item;
     this.emit();
   }
 
@@ -141,7 +151,8 @@ export class Editor {
       return;
     }
 
-    if (tool === "belt" && moveDir !== null) {
+    const belt = isBeltTool(tool);
+    if (belt && moveDir !== null) {
       // Beim Ziehen zeigt das vorige Band zum neuen Feld -> Kurven entstehen von selbst.
       const prev = w.entityAt(s.lastX, s.lastY);
       if (prev?.type === "belt" && s.placed.has(prev.id)) w.setDir(prev, moveDir);
@@ -151,27 +162,33 @@ export class Editor {
 
     const existing = w.entityAt(x, y);
     if (existing) {
-      // Bohrer Mk2 auf einen alten Bohrer setzen tauscht ihn aus.
-      if (tool === "extractor_mk2" && existing.type === "extractor") {
-        const up = w.upgradeExtractor(existing);
+      // Schnelleren Bohrer auf einen alten setzen tauscht ihn aus.
+      if ((tool === "extractor_mk2" || tool === "extractor_mk3") && existing.type.startsWith("extractor")) {
+        if (existing.type === tool) return;
+        const up = w.upgradeExtractor(existing, tool);
         if (up) s.placed.add(up.id);
-        else this.fail(w.isUnlocked(tool) ? "cost" : "locked");
+        else if (!w.isUnlocked(tool)) this.fail("locked");
+        else if (existing.type !== "extractor_mk3") this.fail("cost");
         return;
       }
-      if (existing.type !== tool) return;
+      if (existing.type !== entityTypeOf(tool)) return;
+      // Schnelleres Band ueber alte Baender ziehen ruestet sie auf.
+      if (belt && existing.type === "belt" && existing.level < BELT_LEVEL[tool as BuildId]!) {
+        if (!w.upgradeBelt(existing, tool as BuildId)) this.fail(w.isUnlocked(tool as BuildId) ? "cost" : "locked");
+      }
       // Antippen eines gleichen Gebaeudes dreht es; Ziehen ueber Baender richtet sie aus.
       if (moveDir === null && s.tap) w.setDir(existing, rotateCW(existing.dir));
-      else if (moveDir !== null && tool === "belt") w.setDir(existing, moveDir);
+      else if (moveDir !== null && belt) w.setDir(existing, moveDir);
       // Ein Zug, der auf einem Band beginnt, darf dessen Richtung mitnehmen.
-      if (tool === "belt") s.placed.add(existing.id);
+      if (belt) s.placed.add(existing.id);
       return;
     }
 
     const recipe = tool === "assembler" ? this.assemblerRecipe : null;
     const error = w.buildError(tool, x, y);
     if (error) {
-      // Belegte Felder beim Ziehen sind normal; nur echte Hindernisse melden.
-      if (error !== "blocked") this.fail(error);
+      // Belegte Felder sind normal; fehlendes Erz nur beim Antippen melden, nicht beim Ziehen.
+      if (error !== "blocked" && (error !== "ore" || moveDir === null)) this.fail(error);
       return;
     }
     const e = w.build(tool, x, y, this.rotation, recipe);
