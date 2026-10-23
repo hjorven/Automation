@@ -4,7 +4,7 @@ import { Belt, Extractor, Hub, Machine, Merger, Splitter, Tunnel, type Entity, t
 import type { ItemId } from "./items";
 import { MAX_TIER, TIERS, buildCost, buildingTier, canAfford, recipeTier } from "./progression";
 import { recipesFor, type ItemStack, type Recipe } from "./recipes";
-import { oreAt } from "./terrain";
+import { oreAt, waterAt } from "./terrain";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
 export type BuildError = "blocked" | "locked" | "cost";
@@ -61,6 +61,8 @@ export class World implements Host {
   buildError(type: EntityType, x: number, y: number): BuildError | null {
     if (!this.isUnlocked(type)) return "locked";
     if (!this.canPlace(type, x, y)) return "blocked";
+    // Nur fuer den Spieler: alte Spielstaende mit Gebaeuden auf heutigen Seen laden weiter.
+    if (waterAt(x, y)) return "blocked";
     if (!this.canAfford(buildCost(type))) return "cost";
     return null;
   }
