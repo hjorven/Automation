@@ -107,6 +107,30 @@ export const PALETTE = {
   hubDark: 0x2b313b,
   hubNeon: 0x5fe3ff,
   thrusterFlame: 0x6fc8ff,
+
+  // Gebaeude der spaeten Stufen (models/production.ts).
+  storage: 0x9a7a4e,
+  storageDark: 0x6e5636,
+  storageFill: 0x6fd36f,
+  sorter: 0x3f8f9a,
+  laser: 0xff4a5a,
+  generator: 0x5a5f68,
+  copper: 0xd9824a,
+  fuelGen: 0xd9862a,
+  extractorMk3: 0x8a5fd9,
+  extractorMk3Cap: 0xff5fd0,
+  pump: 0x2f3440,
+  oil: 0x141317,
+  refinery: 0xdfe4ea,
+  refineryAccent: 0x4fa3d9,
+  flame: 0xff8a2a,
+  manufacturer: 0x3f6fa8,
+  manufacturerDark: 0x2a4a73,
+  statusLight: 0x5fe38a,
+
+  // Bandstufen: Farbe der Seitenschienen.
+  beltRailMk2: 0xd9533a,
+  beltRailMk3: 0x3a8fd9,
 } as const;
 
 export const cssHex = (c: number) => `#${c.toString(16).padStart(6, "0")}`;

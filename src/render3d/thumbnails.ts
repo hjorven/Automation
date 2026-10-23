@@ -11,20 +11,27 @@ import {
   WebGLRenderer,
   type Object3D,
 } from "three";
-import type { EntityType } from "../sim/entities";
+import type { BuildId } from "../sim/progression";
 import {
   assemblerModel,
   createBeltTexture,
   extractorMk2Model,
+  extractorMk3Model,
   extractorModel,
   foundryModel,
+  generatorCoalModel,
+  generatorFuelModel,
   hubModel,
   iconModel,
+  manufacturerModel,
   mat,
   mergerModel,
-  placeholderModel,
+  pumpModel,
+  refineryModel,
   smelterModel,
+  sorterModel,
   splitterModel,
+  storageModel,
   tunnelModel,
   straightBedGeometry,
   straightFrameGeometry,
@@ -33,7 +40,7 @@ import { PALETTE } from "./palette";
 
 const SIZE = 128;
 
-export type ThumbnailId = EntityType | "hand" | "delete" | "menu" | "rotate0" | "rotate1" | "rotate2" | "rotate3";
+export type ThumbnailId = BuildId | "hand" | "delete" | "menu" | "rotate0" | "rotate1" | "rotate2" | "rotate3";
 
 /**
  * Rendert jedes Gebaeude-Modell einmal als kleines Bild (Data-URL) fuer die
@@ -71,7 +78,9 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["delete", () => iconModel("delete")],
     ["menu", () => iconModel("menu")],
     ...[0, 1, 2, 3].map((d): [ThumbnailId, () => Object3D] => [`rotate${d}` as ThumbnailId, () => iconModel("rotate", d)]),
-    ["belt", () => beltModel(beltTex)],
+    ["belt", () => beltModel(beltTex, PALETTE.beltRail)],
+    ["belt_mk2", () => beltModel(beltTex, PALETTE.beltRailMk2)],
+    ["belt_mk3", () => beltModel(beltTex, PALETTE.beltRailMk3)],
     ["extractor", extractorModel],
     ["smelter", smelterModel],
     ["assembler", assemblerModel],
@@ -81,15 +90,19 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["tunnel", () => tunnelModel(false)],
     ["foundry", foundryModel],
     ["extractor_mk2", extractorMk2Model],
-    // Vorlaeufig, bis es eigene Modelle gibt.
-    ...(["storage", "sorter", "generator_coal", "generator_fuel", "extractor_mk3", "pump", "refinery", "manufacturer"] as const).map(
-      (t): [ThumbnailId, () => Object3D] => [t, () => placeholderModel()],
-    ),
+    ["extractor_mk3", extractorMk3Model],
+    ["pump", pumpModel],
+    ["storage", storageModel],
+    ["sorter", sorterModel],
+    ["generator_coal", generatorCoalModel],
+    ["generator_fuel", generatorFuelModel],
+    ["refinery", refineryModel],
+    ["manufacturer", manufacturerModel],
   ];
   for (const [type, build] of builders) {
     const model = build();
     // Hub ist hoeher als die anderen Gebaeude: etwas weiter herauszoomen.
-    cam.zoom = type === "hub" ? 0.82 : type === "belt" ? 1.15 : 1;
+    cam.zoom = type === "hub" ? 0.82 : type.startsWith("belt") ? 1.15 : 1;
     cam.updateProjectionMatrix();
     model.traverse((o) => {
       // Glut und Leuchtfeuer sichtbar machen, Rauch ausblenden.
@@ -112,9 +125,9 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
   return out;
 }
 
-function beltModel(tex: ReturnType<typeof createBeltTexture>): Group {
+function beltModel(tex: ReturnType<typeof createBeltTexture>, rail: number): Group {
   const g = new Group();
   g.add(new Mesh(straightBedGeometry(), new MeshStandardMaterial({ map: tex, roughness: 0.9 })));
-  g.add(new Mesh(straightFrameGeometry(), mat(PALETTE.beltRail, { rough: 0.6 })));
+  g.add(new Mesh(straightFrameGeometry(), mat(rail, { rough: 0.6 })));
   return g;
 }

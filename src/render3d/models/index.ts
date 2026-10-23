@@ -14,3 +14,13 @@ export { HUB_PAD_Y, assemblerModel, extractorModel, hubModel, smelterModel } fro
 export { itemGeometry, itemMaterial } from "./items";
 export { extractorMk2Model, foundryModel, mergerModel, placeholderModel, splitterModel, tunnelModel } from "./logistics";
 export { iconModel, type IconTool } from "./icons";
+export {
+  extractorMk3Model,
+  generatorCoalModel,
+  generatorFuelModel,
+  manufacturerModel,
+  pumpModel,
+  refineryModel,
+  sorterModel,
+  storageModel,
+} from "./production";
