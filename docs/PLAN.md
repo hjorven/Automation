@@ -364,6 +364,19 @@ Abgelieferte liegt danach im Lager, Stufe 0).
 - [x] Bohrer Mk2 (doppelt so schnell), ersetzt alte Bohrer per Antippen
 - [ ] Offen: schönere Modelle für die neuen Gebäude, Band Mk2, Blueprints
 
+### Status Landschaft und Welt
+
+- `src/render3d/terrain.ts`: Boden mit weichen Biomen (Wiese, Steppe, Gestein), Raster im
+  Shader, Wolkenschatten. Erz-Vorkommen mit eigener Form je Erz (Kristalle, Brocken,
+  Platten, Oelquelle), auch fuer die kommenden Erze. Deko (Gras, Bueschel, Steine, Baeume,
+  Schilf, Leuchtpflanzen) wird pro Chunk zu einem Mesh verschmolzen und unter Gebaeuden
+  ausgeblendet; weit entfernte Chunks lassen Kleinteile weg.
+- Seen: `waterAt` in `src/sim/terrain.ts`, erst ab 20 Feldern vom Start, nie auf Erz.
+  Der Spieler kann dort nicht bauen (Tunnel fuehren darunter durch); alte Spielstaende laden weiter.
+- `src/render3d/environment.ts`: Licht, Dunst, Tag/Nacht (12 min Tag, 4 min Nacht Spielzeit,
+  folgt `world.tick`), nachts leuchtendes Raster im bebauten Bereich und Gluehwuermchen.
+  `?zeit=tag`, `?zeit=nacht` oder `?zeit=0..1` setzt die Tageszeit fest.
+
 ### Nächster Schritt
 
 Band-Geschwindigkeitsstufen, Blueprints, Statistiken.
