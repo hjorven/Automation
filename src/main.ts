@@ -69,6 +69,7 @@ async function main() {
   const menu = new Menu({
     snapshot: () => serialize(world),
     lastSavedAt: () => lastSavedAt,
+    restartTutorial: () => ui.restartTutorial(),
     async replace(data: SaveData | null) {
       // Autosave anhalten, damit der alte Stand den neuen nicht ueberschreibt.
       saving = false;

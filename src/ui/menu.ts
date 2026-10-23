@@ -1,4 +1,5 @@
 import { decodeSave, deserialize, encodeSave, type SaveData } from "../sim/save";
+import { byId } from "./dom";
 
 export interface MenuActions {
   /** Aktueller Spielstand (fuer den Export). */
@@ -6,15 +7,21 @@ export interface MenuActions {
   /** Ersetzt das laufende Spiel durch `data` bzw. ein neues Spiel (null). */
   replace(data: SaveData | null): Promise<void>;
   lastSavedAt(): number | null;
+  restartTutorial(): void;
 }
 
 /** Spiel-Menue: Export/Import als Text oder Datei, neues Spiel. */
 export class Menu {
   private readonly el = byId("menu");
+  private readonly scrim = byId("scrim");
 
   constructor(private readonly actions: MenuActions) {
     this.el.addEventListener("click", this.onClick);
     this.el.addEventListener("change", this.onFile);
+    this.scrim.addEventListener("click", () => this.isOpen && this.close());
+    window.addEventListener("keydown", (ev) => {
+      if (ev.key === "Escape" && this.isOpen) this.close();
+    });
   }
 
   open() {
@@ -24,7 +31,8 @@ export class Menu {
       `<div class="label">Die Fabrik wird automatisch in diesem Browser gespeichert` +
       (saved ? ` (zuletzt ${new Date(saved).toLocaleTimeString("de-DE")}).` : ".") +
       `</div>` +
-      `<div class="label">Exportieren sichert sie als Code, z. B. für ein anderes Gerät.</div>` +
+      `<div class="caps">Spielstand übertragen</div>` +
+      `<div class="label">Exportieren sichert die Fabrik als Code, z. B. für ein anderes Gerät.</div>` +
       `<textarea id="save-code" spellcheck="false" placeholder="Spielstand-Code hier einfügen"></textarea>` +
       `<div id="menu-msg" class="msg"></div>` +
       `<div class="actions">` +
@@ -33,15 +41,19 @@ export class Menu {
       `</div><div class="actions">` +
       `<button data-action="import">Code laden</button>` +
       `<label class="file-btn">Datei laden<input type="file" accept=".txt,text/plain" hidden></label>` +
+      `</div><div class="caps">Hilfe</div><div class="actions">` +
+      `<button data-action="tutorial">Einführung neu starten</button>` +
       `</div><div class="actions">` +
       `<button data-action="new" class="danger">Neues Spiel</button>` +
       `<button data-action="close">Schließen</button>` +
       `</div>`;
     this.el.hidden = false;
+    this.scrim.hidden = false;
   }
 
   close() {
     this.el.hidden = true;
+    this.scrim.hidden = true;
   }
 
   get isOpen() {
@@ -77,6 +89,10 @@ export class Menu {
           if (confirm("Neues Spiel starten? Die aktuelle Fabrik geht verloren, wenn du sie nicht exportiert hast.")) {
             await this.actions.replace(null);
           }
+          break;
+        case "tutorial":
+          this.actions.restartTutorial();
+          this.close();
           break;
         case "close":
           this.close();
@@ -133,8 +149,3 @@ export class Menu {
   }
 }
 
-function byId(id: string): HTMLElement {
-  const el = document.getElementById(id);
-  if (!el) throw new Error(`#${id} fehlt in index.html`);
-  return el;
-}

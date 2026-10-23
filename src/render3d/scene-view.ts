@@ -1,11 +1,6 @@
 import {
-  AmbientLight,
-  Color,
-  DirectionalLight,
   DoubleSide,
-  Fog,
   Group,
-  HemisphereLight,
   InstancedMesh,
   Matrix4,
   Mesh,
@@ -47,10 +42,8 @@ import {
   tunnelModel,
 } from "./models";
 import { PALETTE } from "./palette";
+import { Environment } from "./environment";
 import { TerrainView } from "./terrain";
-
-/** Sonnenrichtung (von der Szene zur Sonne). */
-const SUN = new Vector3(-0.55, 1, 0.35).normalize();
 
 type BeltVariant = 0 | 1 | 2; // gerade, Kurve von links, Kurve von rechts
 
@@ -107,8 +100,9 @@ class GrowingInstances {
  */
 export class SceneView {
   readonly scene = new Scene();
-  private readonly sun = new DirectionalLight(0xfff4e0, 2.4);
   private readonly terrain = new TerrainView();
+  /** Licht, Nebel und Tag/Nacht. */
+  readonly env: Environment;
   private readonly entitiesGroup = new Group();
   private readonly nodes = new Map<number, EntityNode>();
   private readonly templates = new Map<string, Group>();
@@ -132,17 +126,7 @@ export class SceneView {
 
   constructor() {
     const sc = this.scene;
-    sc.background = new Color(PALETTE.sky);
-    sc.fog = new Fog(PALETTE.sky, 30, 90);
-    sc.add(new HemisphereLight(PALETTE.sky, PALETTE.hemiGround, 1.1));
-    sc.add(new AmbientLight(0xffffff, 0.25));
-
-    this.sun.castShadow = true;
-    this.sun.shadow.mapSize.set(2048, 2048);
-    this.sun.shadow.bias = -0.0008;
-    this.sun.shadow.normalBias = 0.02;
-    sc.add(this.sun, this.sun.target);
-
+    this.env = new Environment(sc);
     sc.add(this.terrain.group, this.entitiesGroup);
 
     const bedMat = new MeshStandardMaterial({ map: this.beltTexture, roughness: 0.9, side: DoubleSide });
@@ -171,7 +155,7 @@ export class SceneView {
   /** `alpha` (0..1) interpoliert zwischen zwei Simulations-Ticks, `dt` in Sekunden. */
   render(world: World, rig: CameraRig, alpha: number, dt: number, selectedId: number | null) {
     const t = performance.now() / 1000;
-    this.followCamera(rig);
+    this.followCamera(world, rig, t);
 
     if (world.tier !== this.lastTier) {
       if (this.lastTier !== -1 && world.tier > this.lastTier) this.flightStart = t;
@@ -181,6 +165,7 @@ export class SceneView {
     if (world.version !== this.worldVersion) {
       this.worldVersion = world.version;
       this.syncEntities(world);
+      this.terrain.setOccupied((x, y) => world.entityAt(x, y) !== undefined);
     }
 
     this.beltTexture.offset.x = -((t * BELT_SPEED * TICKS_PER_SECOND) % 1);
@@ -195,29 +180,14 @@ export class SceneView {
     }
   }
 
-  private followCamera(rig: CameraRig) {
+  private followCamera(world: World, rig: CameraRig, t: number) {
     const tg = rig.target;
     const d = rig.distance;
-    this.terrain.update(tg.x, tg.z, Math.min(64, d * 2.2));
-
-    // Schattenkamera wandert mit und deckt den sichtbaren Bereich ab.
-    const r = Math.min(60, d * 1.3 + 6);
-    const cam = this.sun.shadow.camera;
-    cam.left = -r;
-    cam.right = r;
-    cam.top = r;
-    cam.bottom = -r;
-    cam.near = 1;
-    cam.far = 200;
-    cam.updateProjectionMatrix();
-    this.sun.target.position.set(tg.x, 0, tg.z);
-    this.sun.position.copy(this.sun.target.position).addScaledVector(SUN, 80);
-
-    const fog = this.scene.fog as Fog;
-    // Nebel verdeckt den Rand des erzeugten Gelaendes.
-    fog.far = Math.min(64, d * 4);
-    fog.near = fog.far * 0.45;
+    // Reicht bis knapp ueber den Bildrand, auch wenn die Kamera gedreht ist.
+    this.terrain.update(tg.x, tg.z, Math.min(56, d * 0.85 + 8));
+    this.env.update(tg, d, world.tick / TICKS_PER_SECOND, t, world.tier);
   }
+
 
   // ------------------------------------------------------------ Gebaeude
 

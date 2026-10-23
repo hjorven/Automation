@@ -30,7 +30,7 @@ import {
   type BuildId,
 } from "./progression";
 import { recipesFor, type ItemStack, type Recipe } from "./recipes";
-import { oreAt } from "./terrain";
+import { oreAt, waterAt } from "./terrain";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
 export type BuildError =
@@ -114,6 +114,8 @@ export class World implements Host {
     if (!this.isUnlocked(id)) return "locked";
     const type = entityTypeOf(id);
     if (!this.canPlace(type, x, y)) return this.grid.has(tileKey(x, y)) ? "blocked" : "ore";
+    // Nur fuer den Spieler: alte Spielstaende mit Gebaeuden auf heutigen Seen laden weiter.
+    if (waterAt(x, y)) return "water";
     if (!this.canAfford(buildCost(id))) return "cost";
     return null;
   }

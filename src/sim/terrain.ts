@@ -83,3 +83,17 @@ function valueNoise(x: number, y: number, seed: number): number {
 
 const smooth = (t: number) => t * t * (3 - 2 * t);
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
+
+/** Seen liegen erst ausserhalb des Startbereichs. */
+const WATER_CLEAR_RADIUS = 20;
+
+/**
+ * Deterministisch: liegt auf Feld (x, y) Wasser? Wasser ist nicht bebaubar
+ * (Tunnel koennen darunter durch). Erz hat immer Vorrang vor Wasser.
+ */
+export function waterAt(x: number, y: number): boolean {
+  if (Math.hypot(x, y) < WATER_CLEAR_RADIUS) return false;
+  const n = valueNoise(x / 15, y / 15, SEED + 10) * 0.75 + valueNoise(x / 5, y / 5, SEED + 11) * 0.25;
+  if (n < 0.7) return false;
+  return oreAt(x, y) === null;
+}
