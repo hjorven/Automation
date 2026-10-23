@@ -1,6 +1,21 @@
 import type { ItemId } from "./items";
 
-export type OreId = Extract<ItemId, "iron_ore" | "copper_ore" | "coal">;
+export type OreId = Extract<
+  ItemId,
+  "iron_ore" | "copper_ore" | "coal" | "stone" | "quartz" | "sulfur" | "crude_oil" | "bauxite"
+>;
+
+/**
+ * Spaete Rohstoffe liegen weiter draussen (Mindestabstand vom Ursprung), damit
+ * man fuer sie expandieren muss.
+ */
+const FAR_ORES: { ore: OreId; minDist: number }[] = [
+  { ore: "stone", minDist: 20 },
+  { ore: "quartz", minDist: 35 },
+  { ore: "sulfur", minDist: 45 },
+  { ore: "bauxite", minDist: 60 },
+];
+const OIL_MIN_DIST = 40;
 
 const SEED = 1337;
 
@@ -29,9 +44,22 @@ export function oreAt(x: number, y: number): OreId | null {
   if (n < 0.72) {
     // Kohle nur dort, wo vorher nichts lag, damit alte Bohrer ihr Erz behalten.
     const k = valueNoise(x / 6, y / 6, SEED + 3) * 0.7 + valueNoise(x / 2.5, y / 2.5, SEED + 4) * 0.3;
-    return k > 0.76 ? "coal" : null;
+    if (k > 0.76) return "coal";
+    return farOreAt(x, y);
   }
   return valueNoise(x / 40, y / 40, SEED + 2) < 0.5 ? "iron_ore" : "copper_ore";
+}
+
+/** Rohstoffe der spaeten Stufen; nur auf Feldern, die sonst leer waeren. */
+function farOreAt(x: number, y: number): OreId | null {
+  const d = Math.hypot(x, y);
+  if (d >= OIL_MIN_DIST && valueNoise(x / 3.5, y / 3.5, SEED + 8) > 0.9) return "crude_oil";
+  if (d < FAR_ORES[0].minDist) return null;
+  const n = valueNoise(x / 8, y / 8, SEED + 5) * 0.7 + valueNoise(x / 3, y / 3, SEED + 6) * 0.3;
+  if (n < 0.7) return null;
+  const allowed = FAR_ORES.filter((o) => d >= o.minDist);
+  const pick = Math.floor(valueNoise(x / 25, y / 25, SEED + 7) * allowed.length * 0.999);
+  return allowed[pick].ore;
 }
 
 function hash(x: number, y: number, seed: number): number {

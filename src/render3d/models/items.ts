@@ -126,6 +126,12 @@ export function itemGeometry(item: ItemId): BufferGeometry {
       p.add(cylG(0.015, 0.015, 0.02, 6, 0.08, 0.12, 0.05), 0x3fae5a);
       return p.build();
     }
+    default: {
+      // Vorlaeufig fuer Items ohne eigenes Modell: Kiste in Itemfarbe.
+      p.add(boxG(0.2, 0.14, 0.2), c);
+      p.add(boxG(0.22, 0.02, 0.22, 0, 0.14, 0), shade(c, 0.1));
+      return p.build();
+    }
   }
 }
 

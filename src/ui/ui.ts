@@ -1,9 +1,9 @@
 import type { Editor, Tool } from "../game/editor";
 import { ITEM_COLORS, cssHex } from "../render3d/palette";
 import { renderThumbnails, type ThumbnailId } from "../render3d/thumbnails";
-import type { Entity } from "../sim/entities";
+import { Machine, type Entity } from "../sim/entities";
 import { ITEM_NAMES, ITEM_ORDER, type ItemId } from "../sim/items";
-import { MAX_TIER, TIERS, buildCost } from "../sim/progression";
+import { MAX_TIER, TIERS, buildCost, type BuildId } from "../sim/progression";
 import { recipeById, recipesFor, type ItemStack, type Recipe } from "../sim/recipes";
 import type { World } from "../sim/world";
 
@@ -19,6 +19,16 @@ const TOOLS: { tool: Tool; label: string; key: string }[] = [
   { tool: "tunnel", label: "Tunnel", key: "9" },
   { tool: "foundry", label: "Gießerei", key: "0" },
   { tool: "extractor_mk2", label: "Bohrer Mk2", key: "b" },
+  { tool: "storage", label: "Lagerkiste", key: "l" },
+  { tool: "sorter", label: "Sortierer", key: "s" },
+  { tool: "generator_coal", label: "Kohlekraftwerk", key: "k" },
+  { tool: "belt_mk2", label: "Band Mk2", key: "n" },
+  { tool: "manufacturer", label: "Fertigung", key: "f" },
+  { tool: "pump", label: "Ölpumpe", key: "p" },
+  { tool: "refinery", label: "Raffinerie", key: "o" },
+  { tool: "generator_fuel", label: "Treibstoffkraftwerk", key: "t" },
+  { tool: "belt_mk3", label: "Band Mk3", key: "m" },
+  { tool: "extractor_mk3", label: "Bohrer Mk3", key: "v" },
   { tool: "delete", label: "Abriss", key: "x" },
 ];
 
@@ -26,7 +36,7 @@ const TOOLS: { tool: Tool; label: string; key: string }[] = [
 const NOTICE_MS = 2500;
 const TIER_NOTICE_MS = 6000;
 
-const ENTITY_NAMES: Record<Entity["type"], string> = {
+const ENTITY_NAMES: Record<BuildId, string> = {
   belt: "Förderband",
   extractor: "Bohrer",
   smelter: "Schmelze",
@@ -37,6 +47,16 @@ const ENTITY_NAMES: Record<Entity["type"], string> = {
   tunnel: "Tunnel",
   foundry: "Gießerei",
   extractor_mk2: "Bohrer Mk2",
+  extractor_mk3: "Bohrer Mk3",
+  pump: "Ölpumpe",
+  refinery: "Raffinerie",
+  manufacturer: "Fertigungsanlage",
+  generator_coal: "Kohlekraftwerk",
+  generator_fuel: "Treibstoffkraftwerk",
+  storage: "Lagerkiste",
+  sorter: "Sortierer",
+  belt_mk2: "Band Mk2",
+  belt_mk3: "Band Mk3",
 };
 
 /** HTML-Overlay: Werkzeugleiste, Auftrag/Lager (HUD) und Info-Panel. */
@@ -74,7 +94,7 @@ export class Ui {
     const err = this.editor.lastError;
     const showErr = !!err && now - err.at < NOTICE_MS;
     const showTier = now - this.tierReachedAt < TIER_NOTICE_MS;
-    const key = `${w.storageVersion}|${w.tier}|${this.editor.tool}|${showErr && err!.at}|${showTier}`;
+    const key = `${w.storageVersion}|${w.tier}|${Math.round(w.power.supply)}|${Math.round(w.power.demand)}|${this.editor.tool}|${showErr && err!.at}|${showTier}`;
     if (key !== this.hudKey) {
       this.hudKey = key;
       this.renderHud(showErr, showTier);
@@ -106,7 +126,7 @@ export class Ui {
         ? `<img class="thumb" ${attrs} src="${thumbs[id]}" alt="" draggable="false">`
         : `<span class="thumb" ${attrs}></span>`;
     const html = TOOLS.map(
-      (t) => `<button data-tool="${t.tool}" title="${t.label} (${t.key})">${icon(t.tool)}${t.label}</button>`,
+      (t) => `<button data-tool="${t.tool}" title="${t.label} (${t.key})">${icon(t.tool as ThumbnailId)}${t.label}</button>`,
     ).join("");
     this.toolbar.innerHTML =
       html +
@@ -128,6 +148,11 @@ export class Ui {
     const next = TIERS[w.tier + 1];
 
     let html = `<div class="goal">Hub-Stufe <b>${w.tier}/${MAX_TIER}</b>: ${tier.name}</div>`;
+    if (w.powerActive) {
+      const p = w.power;
+      const cls = p.factor < 1 ? "cost missing" : "cost";
+      html += `<div class="${cls}">Strom: ${Math.round(p.demand)} / ${Math.round(p.supply)} MW (${Math.round(p.factor * 100)} %)</div>`;
+    }
     if (showTier && w.tier > 0) {
       html += `<div class="notice">Stufe ${w.tier} erreicht! Neu: ${unlockText(w.tier)}</div>`;
     }
@@ -186,7 +211,7 @@ export class Ui {
 
     const w = this.editor.world;
     let body = "";
-    if (e.type === "assembler" || e.type === "foundry") {
+    if (e instanceof Machine && e.type !== "smelter" && recipesFor(e.type).length > 1) {
       body =
         `<div class="label">Rezept wählen</div><div class="recipes">` +
         recipesFor(e.type)
@@ -257,8 +282,10 @@ function entityStats(e: Entity, w: World): string {
     case "smelter":
     case "assembler":
     case "foundry":
+    case "refinery":
+    case "manufacturer":
       return (
-        (e.recipe && e.type !== "assembler" ? `<div>Rezept: ${recipeLabel(e.recipe)}</div>` : "") +
+        (e.recipe && (e.type === "smelter" || recipesFor(e.type).length <= 1) ? `<div>Rezept: ${recipeLabel(e.recipe)}</div>` : "") +
         `<div>Eingang: ${stacks(e.input)}</div><div>Ausgang: ${stacks(e.output)}</div>`
       );
     case "belt":
@@ -268,10 +295,14 @@ function entityStats(e: Entity, w: World): string {
     case "tunnel":
       if (e.exit) return "";
       return e.partner(w) ? `<div>Unterwegs: ${e.transit.length}</div>` : `<div>Kein Ausgang in Reichweite.</div>`;
-    case "extractor":
-    case "extractor_mk2":
-    case "splitter":
-    case "merger":
+    case "storage":
+      return `<div>Inhalt: ${e.queue.length}/200</div>`;
+    case "sorter":
+      return `<div>Filter: ${e.filter ? itemLabel(e.filter) : "keiner"}</div>`;
+    case "generator_coal":
+    case "generator_fuel":
+      return `<div>Brennstoff: ${e.fuel}, ${e.burning ? "läuft" : "aus"}</div>`;
+    default:
       return "";
   }
 }

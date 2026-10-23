@@ -5,7 +5,7 @@ import { Belt, Extractor, Machine, Tunnel } from "./entities";
 import type { ItemId } from "./items";
 import { MAX_TIER, TIERS, buildingTier, recipeTier } from "./progression";
 import { RECIPES } from "./recipes";
-import { deserialize, serialize } from "./save";
+import { SAVE_VERSION, deserialize, serialize } from "./save";
 import { oreAt } from "./terrain";
 import { World } from "./world";
 
@@ -198,11 +198,11 @@ describe("Tunnel", () => {
 
 describe("Giesserei und Bohrer Mk2", () => {
   it("Giesserei stellt sich auf Stahl ein", () => {
-    const w = richWorld();
+    const w = richWorld(4);
     const f = w.build("foundry", 3, 3, RIGHT) as Machine;
     expect(f.recipe?.id).toBe("steel");
-    expect(f.accept("iron_ore", 2)).toBe(true);
-    expect(f.accept("coal", 2)).toBe(true);
+    expect(f.accept("iron_ore", 2, w)).toBe(true);
+    expect(f.accept("coal", 2, w)).toBe(true);
     for (let i = 0; i < 41; i++) f.update(w);
     // Ohne Abnehmer bleibt der Stahl im Ausgang liegen.
     expect(f.output.get("steel")).toBe(1);
@@ -250,7 +250,7 @@ describe("Spielstand v1", () => {
     expect(w.entities.size).toBe(2);
     expect(w.upgradeHub()).toBe(true);
     const saved = serialize(w);
-    expect(saved.version).toBe(2);
+    expect(saved.version).toBe(SAVE_VERSION);
     expect(saved.tier).toBe(1);
   });
 });
