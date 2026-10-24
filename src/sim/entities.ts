@@ -35,7 +35,8 @@ export type EntityType =
   | "sorter"
   | "solar"
   | "accumulator"
-  | "radar";
+  | "radar"
+  | "wreck";
 
 abstract class EntityBase {
   abstract readonly type: EntityType;
@@ -411,6 +412,19 @@ export class Radar extends EntityBase {
   }
 }
 
+/** Wrack aus der Welt: liegt im Weg, bis man es birgt (siehe World.salvage). */
+export class Wreck extends EntityBase {
+  readonly type = "wreck";
+
+  accept(): boolean {
+    return false;
+  }
+
+  outputsTo(): boolean {
+    return false;
+  }
+}
+
 /** Lagerkiste: nimmt von hinten und den Seiten an, gibt der Reihe nach vorne aus. */
 export class Storage extends EntityBase {
   readonly type = "storage";
@@ -565,7 +579,8 @@ export type Entity =
   | Generator
   | Solar
   | Accumulator
-  | Radar;
+  | Radar
+  | Wreck;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

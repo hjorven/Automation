@@ -40,6 +40,7 @@ export class Ui {
   private readonly stats: DeliveryStats;
   private tier: number;
   private errorAt = 0;
+  private salvageAt = 0;
   private storageVersion = -1;
   /** Letzte Fingerposition auf dem Spielfeld (fuer Hinweise am Finger). */
   private pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
@@ -96,6 +97,13 @@ export class Ui {
     if (err && err.at !== this.errorAt) {
       this.errorAt = err.at;
       this.toasts.float(ERROR_TEXT[err.error] ?? "Geht hier nicht", this.pointer.x, this.pointer.y);
+    }
+    const sal = this.editor.lastSalvage;
+    if (sal && sal.at !== this.salvageAt) {
+      this.salvageAt = sal.at;
+      const parts = sal.loot.items.map((s) => `${s.count} ${ITEM_NAMES[s.item]}`);
+      if (sal.loot.recipe) parts.push(`Bauplan "${recipeById(sal.loot.recipe)?.name ?? sal.loot.recipe}"`);
+      this.toasts.show(`Geborgen: ${parts.join(", ")}`, "ok", 4500);
     }
     this.toolbar.refresh();
     this.panel.render();

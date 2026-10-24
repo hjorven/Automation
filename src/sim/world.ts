@@ -12,6 +12,7 @@ import {
   Merger,
   Solar,
   Radar,
+  Wreck,
   Sorter,
   Splitter,
   Storage,
@@ -40,7 +41,8 @@ import {
 import { ALT_RECIPES, recipeById, recipesFor, type ItemStack, type Recipe } from "./recipes";
 import { RESEARCH, researchById, researchForRecipe, totalBonus, type Bonus } from "./research";
 import { ORDER_SLOTS, makeOrder, type Order } from "./orders";
-import { DEFAULT_GEN, type WorldGen } from "./terrain";
+import { DEFAULT_GEN, hash, type WorldGen } from "./terrain";
+import { WRECK_REGION, wreckLoot, wreckSite, type WreckLoot } from "./wrecks";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
 export type BuildError =
@@ -66,6 +68,8 @@ export class World implements Host {
   readonly explored = new Set<number>();
   /** Steigt, sobald sich der Nebel lichtet (fuer das Neuzeichnen). */
   exploredVersion = 0;
+  /** Geborgene Wracks (fuer Statistik und Hinweise). */
+  salvaged = 0;
   /** Steigt bei jeder Aenderung am Gebaeudebestand (fuer das Neuzeichnen). */
   version = 0;
   /** Hub-Stufe (Index in TIERS). */
@@ -283,6 +287,11 @@ export class World implements Host {
 
   /** Abreissen wie der Spieler: Baukosten gehen zurueck ins Lager. */
   demolish(x: number, y: number): Entity | undefined {
+    const wreck = this.entityAt(x, y);
+    if (wreck?.type === "wreck") {
+      this.salvage(wreck);
+      return wreck;
+    }
     const e = this.remove(x, y);
     if (e) this.refund(buildCost(buildIdOf(e)));
     return e;
@@ -350,6 +359,7 @@ export class World implements Host {
     const c1y = Math.floor((y + r) / FOG_CELL);
     const cx = x + 0.5;
     const cy = y + 0.5;
+    const fresh: [number, number][] = [];
     for (let gy = c0y; gy <= c1y; gy++) {
       for (let gx = c0x; gx <= c1x; gx++) {
         // Naechster Punkt der Zelle zum Mittelpunkt.
@@ -360,8 +370,39 @@ export class World implements Host {
         if (this.explored.has(key)) continue;
         this.explored.add(key);
         this.exploredVersion++;
+        fresh.push([gx, gy]);
       }
     }
+    if (this.fog) for (const [gx, gy] of fresh) this.spawnWreck(gx, gy);
+  }
+
+  /** Wracks in diesen (frisch erkundeten) Zellen auftauchen lassen. */
+  spawnWrecks(cells: number[]) {
+    for (const k of cells) this.spawnWreck(...cellOf(k));
+  }
+
+  /** Liegt in der frisch erkundeten Zelle ein Wrack, taucht es jetzt auf. */
+  private spawnWreck(gx: number, gy: number) {
+    const per = WRECK_REGION / FOG_CELL;
+    const site = wreckSite(Math.floor(gx / per), Math.floor(gy / per), this.gen);
+    if (!site || Math.floor(site.x / FOG_CELL) !== gx || Math.floor(site.y / FOG_CELL) !== gy) return;
+    if (!this.entityAt(site.x, site.y)) this.place("wreck", site.x, site.y, Math.floor(hash(site.x, site.y, 7) * 4) as Dir);
+  }
+
+  /** Was im Wrack liegt (fuer die Vorschau im Panel). */
+  wreckLoot(e: Entity): WreckLoot | null {
+    return e.type === "wreck" ? wreckLoot(e.x, e.y, (id) => this.extraRecipes.has(id)) : null;
+  }
+
+  /** Wrack bergen: Teile ins Hub-Lager, Rezept freischalten, Wrack verschwindet. */
+  salvage(e: Entity): WreckLoot | null {
+    const loot = this.wreckLoot(e);
+    if (!loot) return null;
+    this.remove(e.x, e.y);
+    this.refund(loot.items);
+    if (loot.recipe) this.unlockRecipe(loot.recipe);
+    this.salvaged++;
+    return loot;
   }
 
   place(type: EntityType, x: number, y: number, dir: Dir, recipe: Recipe | null = null): Entity | null {
@@ -406,6 +447,9 @@ export class World implements Host {
         break;
       case "radar":
         e = new Radar(id, x, y, dir);
+        break;
+      case "wreck":
+        e = new Wreck(id, x, y, dir);
         break;
       case "generator_coal":
       case "generator_fuel":
@@ -576,7 +620,7 @@ export class World implements Host {
 export const FOG_CELL = 4;
 /** So weit lichtet jedes Gebaeude den Nebel; Hub und Radar deutlich weiter. */
 const REVEAL_DEFAULT = 6;
-export const REVEAL_RADIUS: Partial<Record<EntityType, number>> = { hub: 24, radar: 44 };
+export const REVEAL_RADIUS: Partial<Record<EntityType, number>> = { hub: 24, radar: 44, wreck: 0 };
 
 export const cellKey = (cx: number, cy: number) => (cx + 0x8000) * 0x10000 + (cy + 0x8000);
 export const cellOf = (key: number): [number, number] => [Math.floor(key / 0x10000) - 0x8000, (key % 0x10000) - 0x8000];

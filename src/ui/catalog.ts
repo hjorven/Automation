@@ -32,6 +32,7 @@ export const TOOL_NAMES: Partial<Record<string, string>> = {
   refinery: "Raffinerie",
   manufacturer: "Fertigungsanlage",
   radar: "Radarturm",
+  wreck: "Wrack",
 };
 
 /** Kurzname fuer die Werkzeugleiste (sonst der volle Name). */
@@ -70,6 +71,7 @@ export const TOOL_INFO: Partial<Record<string, string>> = {
   pump: "Fördert Rohöl. Nur auf Ölquellen.",
   refinery: "Verarbeitet Rohöl zu Kunststoff, Gummi und Treibstoff.",
   manufacturer: "Große Fertigung für Rezepte mit bis zu vier Zutaten.",
+  wreck: "Abgestürzte Frachtkapsel. Bergen bringt seltene Teile ins Hub-Lager, manchmal auch ein alternatives Rezept.",
   radar: "Lichtet den Nebel in weitem Umkreis. Gebäude erkunden sonst nur ihre direkte Umgebung.",
 };
 

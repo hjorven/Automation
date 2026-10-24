@@ -44,6 +44,7 @@ import {
   placeholderModel,
   pumpModel,
   radarModel,
+  wreckModel,
   refineryModel,
   smelterModel,
   solarModel,
@@ -443,6 +444,12 @@ export class SceneView {
           node.own[0].emissiveIntensity = (t + id * 0.3) % 1.4 < 0.18 ? 2.5 : 0.15;
           break;
         }
+        case "wreck": {
+          // Notsignal: zweimal kurz, dann Pause; so faellt das Wrack aus der Ferne auf.
+          const k = (t + id * 0.7) % 2.2;
+          node.own[0].emissiveIntensity = k < 0.15 || (k > 0.35 && k < 0.5) ? 3 : 0.2;
+          break;
+        }
         case "hub": {
           const thrust = flyDrone(root, t - this.flightStart, t);
           node.spin += (0.8 + thrust * 4 - node.spin) * Math.min(1, dt * 2);
@@ -603,6 +610,8 @@ function buildTemplate(e: Exclude<Entity, Belt>): Group {
       return accumulatorModel();
     case "radar":
       return radarModel();
+    case "wreck":
+      return wreckModel();
     default:
       // Neue Gebaeude, bis es eigene Modelle gibt.
       return placeholderModel();
