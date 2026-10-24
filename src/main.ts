@@ -78,7 +78,14 @@ async function main() {
       location.reload();
     },
   });
-  const ui = new Ui(editor, () => (menu.isOpen ? menu.close() : menu.open()));
+  const ui = new Ui(
+    editor,
+    () => (menu.isOpen ? menu.close() : menu.open()),
+    (x, y) => {
+      rig.target.set(x + 0.5, 0, y + 0.5);
+      rig.update();
+    },
+  );
 
   window.addEventListener("keydown", (ev) => {
     if (ev.metaKey || ev.ctrlKey || ev.altKey) return;

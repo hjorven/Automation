@@ -61,7 +61,7 @@ export class Hud {
       }
       html += `</div><div class="ready-hint" hidden>Upgrade bereit: Hub antippen</div>`;
     } else {
-      html += `<div class="ready-hint">Alle Stufen erreicht. Die Fabrik ist komplett!</div>`;
+      html += `<div class="ready-hint" data-open="upgrades">Fabrik komplett. Weiter mit den Endlos-Upgrades</div>`;
     }
 
     if (w.powerActive) {
