@@ -1,5 +1,6 @@
 import type { Tool } from "../game/editor";
 import { TIERS, buildingTier } from "../sim/progression";
+import { RESEARCH } from "../sim/research";
 
 // Namen, Beschreibungen und Gruppen der Werkzeuge. Bewusst Partial mit
 // Fallback auf die id: neue Gebaeude aus der Simulation erscheinen auch
@@ -118,11 +119,12 @@ export function toolGroup(t: string): ToolGroup {
   return GROUP_OF[t] ?? (t.includes("belt") ? "transport" : t.includes("extractor") ? "mining" : t.includes("generator") ? "power" : "production");
 }
 
-/** Alle baubaren Werkzeuge in der Reihenfolge der Stufen. */
+/** Alle baubaren Werkzeuge (Stufen und Forschung) in der Reihenfolge ihrer fruehesten Stufe. */
 export function buildTools(): Tool[] {
   const seen = new Set<Tool>();
   for (const t of TIERS) for (const b of t.buildings) seen.add(b as Tool);
-  return [...seen];
+  for (const n of RESEARCH) for (const b of n.buildings) seen.add(b as Tool);
+  return [...seen].map((t, i) => ({ t, i })).sort((a, b) => toolTier(a.t) - toolTier(b.t) || a.i - b.i).map((x) => x.t);
 }
 
 export function toolTier(t: Tool): number {
