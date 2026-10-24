@@ -34,7 +34,8 @@ export type EntityType =
   | "storage"
   | "sorter"
   | "solar"
-  | "accumulator";
+  | "accumulator"
+  | "radar";
 
 abstract class EntityBase {
   abstract readonly type: EntityType;
@@ -397,6 +398,19 @@ export class Tunnel extends EntityBase {
   }
 }
 
+/** Radarturm: lichtet beim Bau den Nebel in weitem Umkreis, sonst passiv. */
+export class Radar extends EntityBase {
+  readonly type = "radar";
+
+  accept(): boolean {
+    return false;
+  }
+
+  outputsTo(): boolean {
+    return false;
+  }
+}
+
 /** Lagerkiste: nimmt von hinten und den Seiten an, gibt der Reihe nach vorne aus. */
 export class Storage extends EntityBase {
   readonly type = "storage";
@@ -550,7 +564,8 @@ export type Entity =
   | Sorter
   | Generator
   | Solar
-  | Accumulator;
+  | Accumulator
+  | Radar;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

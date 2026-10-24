@@ -43,6 +43,7 @@ import {
   mergerModel,
   placeholderModel,
   pumpModel,
+  radarModel,
   refineryModel,
   smelterModel,
   solarModel,
@@ -212,6 +213,7 @@ export class SceneView {
     const tg = rig.target;
     const d = rig.distance;
     this.terrain.setGen(world.gen);
+    this.terrain.setExplored((x, y) => world.isExplored(x, y), world.exploredVersion);
     // Reicht bis knapp ueber den Bildrand, auch wenn die Kamera gedreht ist.
     this.terrain.update(tg.x, tg.z, Math.min(56, d * 0.85 + 8));
     this.env.update(tg, d, world.tick / TICKS_PER_SECOND, t, world.tier);
@@ -435,6 +437,12 @@ export class SceneView {
           node.own[0].emissiveIntensity = busy ? 1.1 + 0.6 * Math.sin(t * (p.battery > 0 ? 9 : 4) + id) : 0.35;
           break;
         }
+        case "radar": {
+          // Schuessel dreht gleichmaessig, das Warnlicht blinkt kurz auf.
+          root.getObjectByName("dish")!.rotation.y = t * 1.3 + id;
+          node.own[0].emissiveIntensity = (t + id * 0.3) % 1.4 < 0.18 ? 2.5 : 0.15;
+          break;
+        }
         case "hub": {
           const thrust = flyDrone(root, t - this.flightStart, t);
           node.spin += (0.8 + thrust * 4 - node.spin) * Math.min(1, dt * 2);
@@ -593,6 +601,8 @@ function buildTemplate(e: Exclude<Entity, Belt>): Group {
       return solarModel();
     case "accumulator":
       return accumulatorModel();
+    case "radar":
+      return radarModel();
     default:
       // Neue Gebaeude, bis es eigene Modelle gibt.
       return placeholderModel();

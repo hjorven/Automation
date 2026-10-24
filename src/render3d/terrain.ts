@@ -65,6 +65,7 @@ const BIOME = {
   basalt: new Color(0x3b3533),
   ash: new Color(0x5a4b44),
   lavaBed: new Color(0x2a1a14),
+  fog: new Color(0x2a3240),
 };
 
 interface OreStyle {
@@ -251,7 +252,11 @@ function addUniformsAndWorldPos(s: WebGLProgramParametersWithUniforms) {
 /** Raster aus Feldfugen, Wolkenschatten und nachts leuchtende Fugen im bebauten Bereich. */
 function patchGround(s: WebGLProgramParametersWithUniforms) {
   addUniformsAndWorldPos(s);
+  s.vertexShader = s.vertexShader
+    .replace("#include <common>", "#include <common>\nattribute float aFog;\nvarying float vFog;")
+    .replace("#include <begin_vertex>", "#include <begin_vertex>\nvFog = aFog;");
   s.fragmentShader = s.fragmentShader
+    .replace("#include <common>", "#include <common>\nvarying float vFog;")
     .replace(
       "#include <color_fragment>",
       /* glsl */ `#include <color_fragment>
@@ -260,13 +265,18 @@ function patchGround(s: WebGLProgramParametersWithUniforms) {
       vec2 lines = 1.0 - smoothstep(vec2(0.012), vec2(0.012) + fw * 1.2, toLine);
       float gridFade = 1.0 - smoothstep(0.05, 0.18, max(fw.x, fw.y));
       float land = smoothstep(-0.04, -0.004, vWPos.y);
-      float grid = max(lines.x, lines.y) * gridFade * land;
+      float grid = max(lines.x, lines.y) * gridFade * land * (1.0 - vFog);
       diffuseColor.rgb *= 1.0 - 0.15 * grid;
       vec2 cp = vWPos.xz * 0.03 + vec2(uTime * 0.011, uTime * 0.006);
       float cloud = tNoise(cp) * 0.65 + tNoise(cp * 2.3 + 7.0) * 0.35;
       diffuseColor.rgb *= 1.0 - 0.24 * smoothstep(0.52, 0.72, cloud) * uCloud;
       // Nachts wirken Farben blasser.
-      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))), uNight * 0.45);`,
+      diffuseColor.rgb = mix(diffuseColor.rgb, vec3(dot(diffuseColor.rgb, vec3(0.3, 0.59, 0.11))), uNight * 0.45);
+      // Nebel des Krieges: ziehende Schwaden ueber unerkundetem Land.
+      vec2 fp = vWPos.xz * 0.12 + vec2(uTime * 0.03, -uTime * 0.02);
+      float mist = tNoise(fp) * 0.6 + tNoise(fp * 2.6 - uTime * 0.04) * 0.4;
+      vec3 fogCol = mix(vec3(0.13, 0.16, 0.21), vec3(0.32, 0.37, 0.45), mist);
+      diffuseColor.rgb = mix(diffuseColor.rgb, fogCol, smoothstep(0.0, 1.0, vFog));`,
     )
     .replace(
       "#include <emissivemap_fragment>",
@@ -330,7 +340,12 @@ interface Chunk {
   hiddenKey: string;
   /** Weit weg: ohne Kleinteile. */
   far: boolean;
+  /** Erkundete Nebel-Zellen beim Aufbau (siehe `fogKey`). */
+  fogKey: string;
 }
+
+/** Ist Feld (x, y) erkundet? */
+export type Explored = (x: number, y: number) => boolean;
 
 type Occupied = (x: number, y: number) => boolean;
 
@@ -340,6 +355,31 @@ export class TerrainView {
   private readonly chunks = new Map<string, Chunk>();
   private occupied: Occupied = () => false;
   private gen: WorldGen = DEFAULT_GEN;
+  private explored: Explored = () => true;
+  private exploredVersion = -1;
+
+  /** Nebel des Krieges: Chunks, deren erkundete Felder sich geaendert haben, neu bauen. */
+  setExplored(explored: Explored, version: number) {
+    if (version === this.exploredVersion) return;
+    this.exploredVersion = version;
+    this.explored = explored;
+    for (const [key, c] of this.chunks) {
+      const [x, z] = key.split(",").map(Number);
+      if (fogKey(x, z, explored) === c.fogKey) continue;
+      this.group.remove(c.group);
+      disposeChunk(c);
+      const n = this.makeChunk(x, z, c.far);
+      this.chunks.set(key, n);
+      this.group.add(n.group);
+    }
+  }
+
+  private makeChunk(chx: number, chz: number, far: boolean): Chunk {
+    const c = buildChunk(chx, chz, this.gen, this.explored);
+    c.far = far;
+    this.rebuildDeco(c);
+    return c;
+  }
 
   /** Anderer Weltgenerator (z. B. nach dem Laden): alles neu aufbauen. */
   setGen(gen: WorldGen) {
@@ -365,9 +405,7 @@ export class TerrainView {
         if (chunkDistance(chx, chz, cx, cz) > viewRadius) continue;
         const key = `${chx},${chz}`;
         if (!this.chunks.has(key)) {
-          const c = buildChunk(chx, chz, this.gen);
-          c.far = chunkCenterDistance(chx, chz, cx, cz) > DETAIL_RADIUS;
-          this.rebuildDeco(c);
+          const c = this.makeChunk(chx, chz, chunkCenterDistance(chx, chz, cx, cz) > DETAIL_RADIUS);
           this.chunks.set(key, c);
           this.group.add(c.group);
         }
@@ -422,6 +460,15 @@ function chunkDistance(chx: number, chz: number, x: number, z: number): number {
 const chunkCenterDistance = (chx: number, chz: number, x: number, z: number) =>
   Math.hypot((chx + 0.5) * CHUNK - x, (chz + 0.5) * CHUNK - z);
 
+/** Erkundungsstand der Felder eines Chunks samt Rand, abgetastet in Nebel-Zellen. */
+function fogKey(chx: number, chz: number, explored: Explored): string {
+  let key = "";
+  for (let z = chz * CHUNK - 4; z <= (chz + 1) * CHUNK + 3; z += 4) {
+    for (let x = chx * CHUNK - 4; x <= (chx + 1) * CHUNK + 3; x += 4) key += explored(x, z) ? "1" : "0";
+  }
+  return key;
+}
+
 function hiddenKey(c: Chunk, occupied: Occupied): string {
   let key = "";
   let last = "";
@@ -435,6 +482,8 @@ function hiddenKey(c: Chunk, occupied: Occupied): string {
 }
 
 interface TileInfo {
+  /** Noch nicht erkundet. */
+  fog: boolean;
   ore: string | null;
   obstacle: Obstacle | null;
   /** Wasser oder Lava: Boden senkt sich ab. */
@@ -448,25 +497,30 @@ interface TileInfo {
   height: number;
 }
 
-function buildChunk(chx: number, chz: number, gen: WorldGen): Chunk {
+function buildChunk(chx: number, chz: number, gen: WorldGen, explored: Explored): Chunk {
   const group = new Group();
   const x0 = chx * CHUNK;
   const z0 = chz * CHUNK;
   const W = CHUNK + 2 * MARGIN;
 
-  // Hindernisse samt Rand vorberechnen.
+  // Hindernisse samt Rand vorberechnen; im Nebel ist alles flach und leer.
   const obstacles: (Obstacle | null)[] = new Array(W * W);
   for (let j = 0; j < W; j++) {
-    for (let i = 0; i < W; i++) obstacles[j * W + i] = gen.obstacleAt(x0 - MARGIN + i, z0 - MARGIN + j);
+    for (let i = 0; i < W; i++) {
+      const x = x0 - MARGIN + i;
+      const z = z0 - MARGIN + j;
+      obstacles[j * W + i] = explored(x, z) ? gen.obstacleAt(x, z) : null;
+    }
   }
   const obstacleAt = (tx: number, tz: number) => obstacles[(tz - z0 + MARGIN) * W + (tx - x0 + MARGIN)];
   const tiles: TileInfo[] = [];
   const tileAt = (tx: number, tz: number) => tiles[(tz - z0 + 1) * (CHUNK + 2) + (tx - x0 + 1)];
   for (let tz = z0 - 1; tz <= z0 + CHUNK; tz++) {
     for (let tx = x0 - 1; tx <= x0 + CHUNK; tx++) {
+      const fog = !explored(tx, tz);
       const obstacle = obstacleAt(tx, tz);
       const sunk = obstacle === "water" || obstacle === "lava";
-      const ore = obstacle ? null : gen.oreAt(tx, tz);
+      const ore = obstacle || fog ? null : gen.oreAt(tx, tz);
       const biome = gen.biomeAt(tx, tz);
       let depth = 0;
       let height = 0;
@@ -477,12 +531,13 @@ function buildChunk(chx: number, chz: number, gen: WorldGen): Chunk {
         if (obstacle === "cliff") height = 0.35 + depth * 0.9 + hash(tx, tz, 7) * 0.25;
       }
       const color = new Color();
-      if (obstacle === "water") color.copy(BIOME.sand);
+      if (fog) color.copy(BIOME.fog).offsetHSL(0, 0, (noise(tx / 5, tz / 5, 40) - 0.5) * 0.06 + (hash(tx, tz, 6) - 0.5) * 0.02);
+      else if (obstacle === "water") color.copy(BIOME.sand);
       else if (obstacle === "lava") color.copy(BIOME.basalt);
       else if (obstacle === "cliff") color.copy(BIOME.mountainDark).lerp(BIOME.snow, smooth01((height - 0.9) / 0.4));
       else if (ore) color.setHex(oreStyle(ore).ground).offsetHSL(0, 0, (hash(tx, tz, 5) - 0.5) * 0.05);
       else biomeColor(tx, tz, biome, color);
-      tiles.push({ ore, obstacle, sunk, biome, purity: ore ? gen.purityAt(tx, tz) : "normal", color, depth, height });
+      tiles.push({ fog, ore, obstacle, sunk, biome, purity: ore ? gen.purityAt(tx, tz) : "normal", color, depth, height });
     }
   }
 
@@ -496,7 +551,7 @@ function buildChunk(chx: number, chz: number, gen: WorldGen): Chunk {
   for (let tz = z0; tz < z0 + CHUNK; tz++) {
     for (let tx = x0; tx < x0 + CHUNK; tx++) {
       const t = tileAt(tx, tz);
-      if (t.sunk) continue;
+      if (t.sunk || t.fog) continue;
       if (t.obstacle === "cliff") placeCliff(placements, tx, tz, t.height);
       else if (t.ore) placeOre(placements, tx, tz, oreStyle(t.ore), t.purity);
       else {
@@ -505,7 +560,7 @@ function buildChunk(chx: number, chz: number, gen: WorldGen): Chunk {
       }
     }
   }
-  return { group, deco: null, glow: null, placements, hiddenKey: "-", far: false };
+  return { group, deco: null, glow: null, placements, hiddenKey: "-", far: false, fogKey: fogKey(chx, chz, explored) };
 }
 
 /** Feld-Ecken und -Mitten als Gitter; Seen senken sich zur Mitte ab, Felsen ragen auf. */
@@ -513,6 +568,7 @@ function buildGround(x0: number, z0: number, tileAt: (x: number, z: number) => T
   const N = CHUNK * SUB;
   const pos = new Float32Array((N + 1) * (N + 1) * 3);
   const col = new Float32Array((N + 1) * (N + 1) * 3);
+  const fog = new Float32Array((N + 1) * (N + 1));
   const c = new Color();
   const deep = new Color();
   let v = 0;
@@ -535,6 +591,7 @@ function buildGround(x0: number, z0: number, tileAt: (x: number, z: number) => T
         // Fuss des Felsens: leicht angehoben, damit die Flanke nicht senkrecht ist.
         y = 0.06;
       }
+      fog[v] = tiles.filter((t) => t.fog).length / tiles.length;
       pos[v * 3] = wx;
       pos[v * 3 + 1] = y;
       pos[v * 3 + 2] = wz;
@@ -557,6 +614,7 @@ function buildGround(x0: number, z0: number, tileAt: (x: number, z: number) => T
   const geo = new BufferGeometry();
   geo.setAttribute("position", new BufferAttribute(pos, 3));
   geo.setAttribute("color", new BufferAttribute(col, 3));
+  geo.setAttribute("aFog", new BufferAttribute(fog, 1));
   geo.setIndex(idx);
   geo.computeVertexNormals();
   const mesh = new Mesh(geo, groundMat);
