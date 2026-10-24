@@ -8,6 +8,8 @@ export type ItemId =
   | "sulfur"
   | "crude_oil"
   | "bauxite"
+  // Fluessigkeit (nur in Rohren)
+  | "water"
   // Zwischenprodukte
   | "iron_plate"
   | "copper_plate"
@@ -42,6 +44,7 @@ export const ITEM_ORDER: readonly ItemId[] = [
   "sulfur",
   "crude_oil",
   "bauxite",
+  "water",
   "iron_plate",
   "copper_plate",
   "gear",
@@ -75,6 +78,7 @@ export const ITEM_NAMES: Record<ItemId, string> = {
   sulfur: "Schwefel",
   crude_oil: "Rohöl",
   bauxite: "Bauxit",
+  water: "Wasser",
   iron_plate: "Eisenplatte",
   copper_plate: "Kupferplatte",
   gear: "Zahnrad",

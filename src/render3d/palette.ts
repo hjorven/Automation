@@ -20,6 +20,7 @@ export const ITEM_COLORS: Record<ItemId, number> = {
   sulfur: 0xe2d13a,
   crude_oil: 0x1d1b22,
   bauxite: 0xb0603a,
+  water: 0x3f8fd9,
   concrete: 0xbfbcb4,
   reinforced_plate: 0x9aa6b4,
   rotor: 0x7a8794,
@@ -127,6 +128,29 @@ export const PALETTE = {
   manufacturer: 0x3f6fa8,
   manufacturerDark: 0x2a4a73,
   statusLight: 0x5fe38a,
+
+  // Rohre und Fluessigkeiten (models/fluids.ts).
+  pipe: 0x8a96a6,
+  pipeFlange: 0x4c5868,
+  pipeJoint: 0x6c7888,
+  pipePump: 0x2f7f8f,
+  pipePumpBlade: 0xdfe4ea,
+  tank: 0xc8d0da,
+  waterPump: 0x2f6fa8,
+  waterPumpDeck: 0x6e5636,
+  waterPumpBlade: 0xffc94a,
+  boiler: 0x8a3a2a,
+
+  // Drohnenhafen und Drohne (models/drones.ts).
+  dronePad: 0x4a5260,
+  drone: 0xe0e6ec,
+  droneDark: 0x2f7f8f,
+
+  // Bruecken und Rampen (models/levels.ts).
+  bridgePillar: 0x8a96a6,
+  bridgeBeam: 0xd9a63a,
+  bridgeDeck: 0x3a4250,
+  rampSide: 0x5c6878,
 
   // Bandstufen: Farbe der Seitenschienen.
   beltRailMk2: 0xd9533a,

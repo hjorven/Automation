@@ -1,5 +1,6 @@
 import type { Dir } from "./dir";
-import { Generator, Storage, type Belt, type Entity, type EntityType } from "./entities";
+import { Generator, Storage, type Conveyor, type Entity, type EntityType } from "./entities";
+import { DronePort } from "./drones";
 import { ITEM_ORDER, type ItemId } from "./items";
 import { CREATURE_HP, NEST_HP, nestSites } from "./hazards";
 import { ACCUMULATOR, MAX_TIER } from "./progression";
@@ -29,7 +30,20 @@ export interface SavedEntity {
   x: number;
   y: number;
   dir: Dir;
-  /** Belt */
+  /** Ebene (nur gespeichert, wenn 1 = Bruecke) */
+  layer?: number;
+  /** Drohnenhafen */
+  target?: [number, number] | null;
+  outbox?: ItemId[];
+  inbox?: ItemId[];
+  state?: string;
+  flight?: number;
+  duration?: number;
+  cargo?: ItemId[];
+  waited?: number;
+  /** Rampe: hinauf (true) oder hinunter */
+  up?: boolean;
+  /** Belt, Rampe */
   items?: SavedBeltItem[];
   /** Extractor, Splitter, Merger, Tunnel-Ausgang */
   timer?: number;
@@ -47,6 +61,11 @@ export interface SavedEntity {
   burnLeft?: number;
   /** Batteriespeicher: Ladung in MJ */
   stored?: number;
+  /** Dampfkraftwerk */
+  water?: number;
+  /** Rohr, Tank, Rohrpumpe */
+  fluid?: ItemId | null;
+  amount?: number;
   /** Tunnel */
   exit?: boolean;
   transit?: [ItemId, number][];
@@ -106,6 +125,7 @@ export interface SavedHazards {
 }
 
 export function serialize(world: World): SaveData {
+  world.fluids.flush();
   const entities = [...world.entities.values()].sort((a, b) => a.id - b.id).map(saveEntity);
   return {
     version: SAVE_VERSION,
@@ -186,7 +206,22 @@ const arr = <T>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
 
 function saveEntity(e: Entity): SavedEntity {
   const base: SavedEntity = { type: e.type, x: e.x, y: e.y, dir: e.dir };
+  if (e.layer) base.layer = e.layer;
   switch (e.type) {
+    case "drone_port":
+      return {
+        ...base,
+        target: e.target ? [e.target.x, e.target.y] : null,
+        outbox: [...e.outbox],
+        inbox: [...e.inbox],
+        state: e.state,
+        flight: e.flight,
+        duration: e.duration,
+        cargo: [...e.cargo],
+        waited: e.waited,
+      };
+    case "ramp":
+      return { ...base, up: e.up, items: e.items.map((i) => ({ item: i.item, progress: i.progress, entry: i.entry })) };
     case "belt":
       return {
         ...base,
@@ -197,7 +232,12 @@ function saveEntity(e: Entity): SavedEntity {
     case "extractor_mk2":
     case "extractor_mk3":
     case "pump":
+    case "water_pump":
       return { ...base, timer: e.timer, buffer: e.buffer };
+    case "pipe":
+    case "pipe_pump":
+    case "fluid_tank":
+      return { ...base, fluid: e.fluid, amount: e.amount };
     case "storage":
       return { ...base, queue: [...e.queue] };
     case "sorter":
@@ -210,6 +250,8 @@ function saveEntity(e: Entity): SavedEntity {
     case "solar":
     case "turret":
       return base;
+    case "generator_steam":
+      return { ...base, fuel: e.fuel, burnLeft: e.burnLeft, water: e.water };
     case "splitter":
       return { ...base, buffer: e.buffer, next: e.next };
     case "merger":
@@ -276,7 +318,7 @@ export function deserialize(raw: unknown): World {
   for (const s of data.entities) {
     if (!isType(s.type) || !isDir(s.dir) || !Number.isInteger(s.x) || !Number.isInteger(s.y)) continue;
     const recipe = s.recipe ? (recipeById(s.recipe) ?? null) : null;
-    const e = w.place(s.type, s.x, s.y, s.dir, recipe);
+    const e = w.place(s.type, s.x, s.y, s.dir, recipe, s.layer === 1 ? 1 : 0);
     if (!e) continue; // z. B. Bohrer ohne Erz darunter: still ueberspringen
     restoreState(e, s, w.tick);
   }
@@ -295,12 +337,36 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
       e.level = s.level === 2 || s.level === 3 ? s.level : 1;
       restoreBelt(e, s.items ?? [], tick);
       break;
+    case "drone_port": {
+      const t = s.target;
+      e.target = Array.isArray(t) && Number.isInteger(t[0]) && Number.isInteger(t[1]) ? { x: t[0], y: t[1] } : null;
+      const items = (l: unknown) => (Array.isArray(l) ? l.filter(isItem) : []);
+      e.outbox = items(s.outbox).slice(0, DronePort.CAPACITY);
+      e.inbox = items(s.inbox).slice(0, DronePort.CAPACITY);
+      e.cargo = items(s.cargo);
+      e.state = s.state === "out" || s.state === "back" ? s.state : "idle";
+      e.flight = Math.max(0, num(s.flight));
+      e.duration = Math.max(0, num(s.duration));
+      e.waited = Math.max(0, num(s.waited));
+      break;
+    }
+    case "ramp":
+      e.up = s.up !== false;
+      restoreBelt(e, s.items ?? [], tick);
+      break;
     case "extractor":
     case "extractor_mk2":
     case "extractor_mk3":
     case "pump":
+    case "water_pump":
       e.timer = num(s.timer);
       e.buffer = item(s.buffer);
+      break;
+    case "pipe":
+    case "pipe_pump":
+    case "fluid_tank":
+      e.fluid = item(s.fluid);
+      e.amount = e.fluid ? Math.min(e.capacity, Math.max(0, num(s.amount))) : 0;
       break;
     case "storage":
       for (const i of s.queue ?? []) if (isItem(i) && e.queue.length < Storage.CAPACITY) e.queue.push(i);
@@ -312,8 +378,10 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
       break;
     case "generator_coal":
     case "generator_fuel":
+    case "generator_steam":
       e.fuel = Math.min(Generator.FUEL_CAPACITY, Math.max(0, Math.floor(num(s.fuel))));
       e.burnLeft = Math.max(0, num(s.burnLeft));
+      e.water = Math.min(Generator.WATER_CAPACITY, Math.max(0, Math.floor(num(s.water))));
       break;
     case "accumulator":
       e.stored = Math.min(ACCUMULATOR.capacity, Math.max(0, num(s.stored)));
@@ -352,7 +420,7 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
   }
 }
 
-function restoreBelt(belt: Belt, items: SavedBeltItem[], tick: number) {
+function restoreBelt(belt: Conveyor, items: SavedBeltItem[], tick: number) {
   for (const i of items) {
     if (!isItem(i.item) || !isDir(i.entry)) continue;
     const progress = Math.min(1, Math.max(0, num(i.progress)));
@@ -418,10 +486,17 @@ const TYPES = new Set<string>([
   "manufacturer",
   "generator_coal",
   "generator_fuel",
+  "generator_steam",
+  "water_pump",
+  "pipe",
+  "pipe_pump",
+  "fluid_tank",
   "hub",
   "splitter",
   "merger",
   "tunnel",
+  "ramp",
+  "drone_port",
   "storage",
   "sorter",
   "solar",

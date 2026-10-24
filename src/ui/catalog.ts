@@ -36,6 +36,14 @@ export const TOOL_NAMES: Partial<Record<string, string>> = {
   manufacturer: "Fertigungsanlage",
   radar: "Radarturm",
   wreck: "Wrack",
+  bridge: "Hochband",
+  drone_port: "Drohnenhafen",
+  ramp: "Rampe",
+  pipe: "Rohr",
+  pipe_pump: "Rohrpumpe",
+  fluid_tank: "Flüssigkeitstank",
+  water_pump: "Wasserpumpe",
+  generator_steam: "Dampfkraftwerk",
 };
 
 /** Kurzname fuer die Werkzeugleiste (sonst der volle Name). */
@@ -48,6 +56,9 @@ const SHORT_NAMES: Partial<Record<string, string>> = {
   accumulator: "Speicher",
   turret: "Turm",
   manufacturer: "Fert.-Anlage",
+  fluid_tank: "Tank",
+  generator_steam: "Dampf-KW",
+  drone_port: "Drohnen",
 };
 
 export const TOOL_INFO: Partial<Record<string, string>> = {
@@ -79,6 +90,14 @@ export const TOOL_INFO: Partial<Record<string, string>> = {
   manufacturer: "Große Fertigung für Rezepte mit bis zu vier Zutaten.",
   wreck: "Abgestürzte Frachtkapsel. Bergen bringt seltene Teile ins Hub-Lager, manchmal auch ein alternatives Rezept.",
   radar: "Lichtet den Nebel in weitem Umkreis. Gebäude erkunden sonst nur ihre direkte Umgebung.",
+  drone_port: "Sammelt Items von Bändern, die Drohne fliegt je 30 zum Zielhafen. Ein neuer Hafen wird Ziel des letzten offenen Hafens.",
+  bridge: "Band auf Stelzen über allem, auch über Wasser. Läuft so schnell wie dein schnellstes Band. Mit Rampen verbinden.",
+  ramp: "Führt ein Band auf die Brücke hinauf oder hinunter. Zeigt von selbst nach unten, wenn ein Hochband ankommt.",
+  pipe: "Leitet Wasser, Rohöl und Treibstoff. Verbindet sich mit allen Nachbarn, Maschinen ziehen sich, was sie brauchen.",
+  pipe_pump: "Hält den Durchfluss in langen Leitungen hoch. Je Pumpe 24 Rohrteile mehr Reichweite.",
+  fluid_tank: "Speichert 400 Einheiten einer Flüssigkeit im Rohrnetz.",
+  water_pump: "Pumpt Wasser ins Rohr davor. Nur auf Wasser baubar.",
+  generator_steam: "Verbrennt Kohle mit Wasser aus Rohren und liefert 150 MW Strom.",
 };
 
 export const TOOL_KEYS: Partial<Record<string, string>> = {
@@ -97,10 +116,11 @@ export const TOOL_KEYS: Partial<Record<string, string>> = {
   blueprint: "c",
 };
 
-export type ToolGroup = "transport" | "mining" | "production" | "power" | "base";
+export type ToolGroup = "transport" | "fluids" | "mining" | "production" | "power" | "base";
 
 export const GROUP_LABELS: Record<ToolGroup, string> = {
   transport: "Transport",
+  fluids: "Flüssigkeiten",
   mining: "Abbau",
   production: "Fertigung",
   power: "Energie",
@@ -112,6 +132,9 @@ const GROUP_OF: Partial<Record<string, ToolGroup>> = {
   splitter: "transport",
   merger: "transport",
   tunnel: "transport",
+  bridge: "transport",
+  drone_port: "transport",
+  ramp: "transport",
   extractor: "mining",
   extractor_mk2: "mining",
   extractor_mk3: "mining",
@@ -123,6 +146,11 @@ const GROUP_OF: Partial<Record<string, ToolGroup>> = {
   solar: "power",
   accumulator: "power",
   turret: "base",
+  generator_steam: "power",
+  pipe: "fluids",
+  pipe_pump: "fluids",
+  fluid_tank: "fluids",
+  water_pump: "fluids",
   hub: "base",
   radar: "base",
 };

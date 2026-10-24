@@ -3,12 +3,15 @@ import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "./dir";
 import type { ItemId } from "./items";
 import { GENERATORS } from "./progression";
 import { smeltingRecipeFor, type MachineKind, type Recipe } from "./recipes";
-import { PURITY_RATE, type OreId, type Purity } from "./terrain";
+import { PURITY_RATE, type Purity } from "./terrain";
+import type { DronePort } from "./drones";
+import type { FluidCarrier, PipeKind } from "./fluids";
 
 /** Was ein Gebaeude von der Welt braucht (vermeidet zyklische Imports). */
 export interface Host {
   readonly tick: number;
-  entityAt(x: number, y: number): Entity | undefined;
+  /** `layer` 1 = Bruecken-Ebene ueber dem Boden. */
+  entityAt(x: number, y: number, layer?: number): Entity | undefined;
   deliver(item: ItemId): void;
   /** Anteil der Leistung, mit dem Strom-Verbraucher laufen (0..1). */
   readonly powerFactor: number;
@@ -22,8 +25,8 @@ export interface Host {
   readonly extractBoost?: number;
 }
 
-export type ExtractorKind = "extractor" | "extractor_mk2" | "extractor_mk3" | "pump";
-export type GeneratorKind = "generator_coal" | "generator_fuel";
+export type ExtractorKind = "extractor" | "extractor_mk2" | "extractor_mk3" | "pump" | "water_pump";
+export type GeneratorKind = "generator_coal" | "generator_fuel" | "generator_steam";
 
 export type EntityType =
   | "belt"
@@ -40,10 +43,15 @@ export type EntityType =
   | "accumulator"
   | "radar"
   | "wreck"
-  | "turret";
+  | "turret"
+  | "ramp"
+  | "drone_port"
+  | PipeKind;
 
-abstract class EntityBase {
+export abstract class EntityBase {
   abstract readonly type: EntityType;
+  /** Ebene: 0 = Boden, 1 = Bruecke (nur Hochbaender). */
+  layer: 0 | 1 = 0;
 
   constructor(
     readonly id: number,
@@ -60,13 +68,13 @@ abstract class EntityBase {
 
   update(_host: Host): void {}
 
-  /** Liefert dieses Gebaeude Items auf Feld (x, y)? */
-  outputsTo(x: number, y: number): boolean {
+  /** Liefert dieses Gebaeude Items auf Feld (x, y) der Ebene `layer`? */
+  outputsTo(x: number, y: number, _layer = this.layer): boolean {
     return this.x + DX[this.dir] === x && this.y + DY[this.dir] === y;
   }
 
   protected front(host: Host): Entity | undefined {
-    return host.entityAt(this.x + DX[this.dir], this.y + DY[this.dir]);
+    return host.entityAt(this.x + DX[this.dir], this.y + DY[this.dir], this.layer);
   }
 
   protected pushForward(item: ItemId, host: Host): boolean {
@@ -85,8 +93,9 @@ export interface BeltItem {
   movedAt: number;
 }
 
-export class Belt extends EntityBase {
-  readonly type = "belt";
+/** Gemeinsame Logik von Band und Rampe: Items gleiten von hinten nach vorne. */
+export abstract class Conveyor extends EntityBase {
+  abstract readonly type: "belt" | "ramp";
   /** items[0] liegt am weitesten vorne. */
   items: BeltItem[] = [];
   /** Bandstufe: Mk1 bis Mk3 laufen 1-, 2- und 4-mal so schnell (Durchsatz ebenso). */
@@ -136,7 +145,7 @@ export class Belt extends EntityBase {
     const target = this.front(host);
     if (target && target.accept(head.item, opposite(this.dir), host)) {
       this.items.shift();
-      if (target instanceof Belt) {
+      if (target instanceof Conveyor) {
         // Ueberschuss mitnehmen, damit schnelle Baender an Kanten nicht bremsen,
         // und die Bewegung ueber die Feldgrenze fluessig weiterzeichnen.
         const moved = target.items[target.items.length - 1];
@@ -149,6 +158,43 @@ export class Belt extends EntityBase {
   }
 }
 
+export class Belt extends Conveyor {
+  readonly type = "belt";
+}
+
+/**
+ * Rampe zwischen Boden und Bruecke. Nach oben: nimmt am Boden von hinten an,
+ * gibt vorne auf die Bruecke ab. Nach unten: umgekehrt. Belegt am eigenen
+ * Feld beide Ebenen.
+ */
+export class Ramp extends Conveyor {
+  readonly type = "ramp";
+  up = true;
+
+  constructor(id: number, x: number, y: number, dir: Dir) {
+    super(id, x, y, dir);
+    // Rampen sollen nie bremsen.
+    this.level = 3;
+  }
+
+  /** Ebene, auf der die Rampe ausgibt. */
+  get outLayer(): 0 | 1 {
+    return this.up ? 1 : 0;
+  }
+
+  accept(item: ItemId, side: Dir, host: Host): boolean {
+    return side === opposite(this.dir) && super.accept(item, side, host);
+  }
+
+  protected front(host: Host): Entity | undefined {
+    return host.entityAt(this.x + DX[this.dir], this.y + DY[this.dir], this.outLayer);
+  }
+
+  outputsTo(x: number, y: number, layer = 0): boolean {
+    return layer === this.outLayer && super.outputsTo(x, y);
+  }
+}
+
 export class Extractor extends EntityBase {
   timer = 0;
   buffer: ItemId | null = null;
@@ -158,7 +204,8 @@ export class Extractor extends EntityBase {
     x: number,
     y: number,
     dir: Dir,
-    readonly ore: OreId,
+    /** Gefoerderter Rohstoff (bei der Wasserpumpe: Wasser). */
+    readonly ore: ItemId,
     readonly type: ExtractorKind = "extractor",
     readonly purity: Purity = "normal",
   ) {
@@ -170,6 +217,7 @@ export class Extractor extends EntityBase {
    * Reine Vorkommen verdoppeln das Tempo, unreine halbieren es.
    */
   get interval(): number {
+    if (this.type === "water_pump") return EXTRACT_TICKS / 4;
     const k = this.type === "extractor_mk2" ? 2 : this.type === "extractor_mk3" ? 4 : 1;
     return EXTRACT_TICKS / k / PURITY_RATE[this.purity];
   }
@@ -491,10 +539,15 @@ export class Sorter extends EntityBase {
   }
 }
 
-/** Kraftwerk: verbrennt Kohle oder Treibstoff, so schnell wie Strom gebraucht wird. */
+/**
+ * Kraftwerk: verbrennt Kohle oder Treibstoff, so schnell wie Strom gebraucht
+ * wird. Das Dampfkraftwerk braucht zu jeder Einheit Kohle auch Wasser.
+ */
 export class Generator extends EntityBase {
   static readonly FUEL_CAPACITY = 10;
+  static readonly WATER_CAPACITY = 20;
   fuel = 0;
+  water = 0;
   /** Verbleibende Brenndauer der aktuellen Einheit (Ticks bei Volllast). */
   burnLeft = 0;
 
@@ -512,20 +565,35 @@ export class Generator extends EntityBase {
     return GENERATORS[this.type]!;
   }
 
+  /** Wasser je Einheit Brennstoff (0 = braucht keins). */
+  get waterNeed(): number {
+    return this.spec.water ?? 0;
+  }
+
+  private get canIgnite(): boolean {
+    return this.fuel > 0 && this.water >= this.waterNeed;
+  }
+
   /** Liefert gerade Strom. */
   get burning(): boolean {
-    return this.burnLeft > 0 || this.fuel > 0;
+    return this.burnLeft > 0 || this.canIgnite;
   }
 
   accept(item: ItemId): boolean {
+    if (item === "water" && this.waterNeed > 0) {
+      if (this.water >= Generator.WATER_CAPACITY) return false;
+      this.water++;
+      return true;
+    }
     if (item !== this.spec.fuel || this.fuel >= Generator.FUEL_CAPACITY) return false;
     this.fuel++;
     return true;
   }
 
   update(host: Host): void {
-    if (this.burnLeft <= 0 && this.fuel > 0 && host.powerLoad > 0) {
+    if (this.burnLeft <= 0 && this.canIgnite && host.powerLoad > 0) {
       this.fuel--;
+      this.water -= this.waterNeed;
       this.burnLeft += this.spec.burnTicks;
     }
     if (this.burnLeft > 0) this.burnLeft = Math.max(0, this.burnLeft - host.powerLoad);
@@ -597,6 +665,7 @@ const TUNNEL_GAP = Math.ceil(ITEM_SPACING / BELT_SPEED);
 
 export type Entity =
   | Belt
+  | Ramp
   | Extractor
   | Machine
   | Hub
@@ -610,7 +679,9 @@ export type Entity =
   | Accumulator
   | Radar
   | Wreck
-  | Turret;
+  | Turret
+  | FluidCarrier
+  | DronePort;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

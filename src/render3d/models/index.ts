@@ -27,3 +27,7 @@ export {
 export { accumulatorModel, solarModel } from "./power";
 export { radarModel, wreckModel } from "./explore";
 export { creatureModel, nestModel, turretModel } from "./hazards";
+export { PIPE_Y, fluidTankModel, generatorSteamModel, pipeModel, pipePumpModel, waterPumpModel } from "./fluids";
+export { BRIDGE_Y, bridgeSupportGeometry, rampModel } from "./levels";
+export { paintMat } from "./kit";
+export { DRONE_PAD_Y, droneModel, dronePortModel } from "./drones";

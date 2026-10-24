@@ -22,7 +22,7 @@ export type Thumbs = Partial<Record<string, string>>;
 const LONG_PRESS_MS = 450;
 const HOVER_MS = 500;
 
-const GROUP_ORDER: ToolGroup[] = ["transport", "mining", "production", "power", "base"];
+const GROUP_ORDER: ToolGroup[] = ["transport", "fluids", "mining", "production", "power", "base"];
 
 /**
  * Werkzeugleiste unten: nach Gruppen sortiert, mit Kosten-Warnung,

@@ -7,7 +7,7 @@ import { RESEARCH } from "./research";
  * Was der Spieler bauen kann: alle Gebaeude plus die schnelleren Baender, die
  * als Band (Entity-Typ "belt") mit hoeherer Stufe entstehen.
  */
-export type BuildId = EntityType | "belt_mk2" | "belt_mk3";
+export type BuildId = EntityType | "belt_mk2" | "belt_mk3" | "bridge";
 
 /** Bandstufe je Bau-Id (1 = normales Band). */
 export const BELT_LEVEL: Partial<Record<BuildId, 1 | 2 | 3>> = { belt: 1, belt_mk2: 2, belt_mk3: 3 };
@@ -134,7 +134,15 @@ export const BUILD_COSTS: Partial<Record<BuildId, ItemStack[]>> = {
   accumulator: [s("iron_plate", 15), s("copper_plate", 20), s("circuit", 8)],
   foundry: [s("iron_plate", 10), s("gear", 6), s("circuit", 4)],
   belt_mk2: [s("steel", 1)],
+  bridge: [s("steel", 1), s("iron_plate", 2)],
+  drone_port: [s("steel", 20), s("motor", 4), s("control_unit", 4)],
+  ramp: [s("steel", 2), s("gear", 2)],
   extractor_mk2: [s("steel", 4), s("gear", 4), s("circuit", 2)],
+  pipe: [s("steel", 1)],
+  water_pump: [s("steel", 6), s("gear", 4), s("circuit", 2)],
+  pipe_pump: [s("steel", 4), s("gear", 4), s("circuit", 4)],
+  fluid_tank: [s("steel", 10), s("concrete", 6)],
+  generator_steam: [s("steel", 12), s("concrete", 10), s("circuit", 6)],
   manufacturer: [s("reinforced_plate", 10), s("rotor", 6), s("concrete", 10)],
   pump: [s("steel", 10), s("motor", 2), s("concrete", 10)],
   refinery: [s("steel", 15), s("motor", 3), s("control_unit", 2)],
@@ -149,6 +157,9 @@ export const POWER_USE: Partial<Record<EntityType, number>> = {
   extractor_mk2: 10,
   extractor_mk3: 25,
   pump: 20,
+  water_pump: 6,
+  pipe_pump: 8,
+  drone_port: 30,
   smelter: 4,
   assembler: 8,
   foundry: 16,
@@ -157,9 +168,13 @@ export const POWER_USE: Partial<Record<EntityType, number>> = {
   turret: 6,
 };
 
-/** Kraftwerke: Brennstoff, Leistung in MW und Brenndauer einer Einheit bei Volllast. */
-export const GENERATORS: Partial<Record<EntityType, { fuel: ItemId; power: number; burnTicks: number }>> = {
+/**
+ * Kraftwerke: Brennstoff, Leistung in MW, Brenndauer einer Einheit bei Volllast
+ * und (Dampf) Wasser je Einheit Brennstoff.
+ */
+export const GENERATORS: Partial<Record<EntityType, { fuel: ItemId; power: number; burnTicks: number; water?: number }>> = {
   generator_coal: { fuel: "coal", power: 75, burnTicks: 80 },
+  generator_steam: { fuel: "coal", power: 150, burnTicks: 80, water: 4 },
   generator_fuel: { fuel: "fuel", power: 150, burnTicks: 160 },
 };
 

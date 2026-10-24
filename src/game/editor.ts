@@ -16,14 +16,14 @@ import {
   type Blueprint,
   type Rect,
 } from "../sim/blueprint";
-import { entityTypeOf, type BuildError, type World } from "../sim/world";
+import { entityTypeOf, layerOf, type BuildError, type World } from "../sim/world";
 
 export type Tool = "hand" | "delete" | "blueprint" | BuildId;
 
 /** Werkzeug, das ein Gebaeude baut (nicht Hand, Abriss oder Blaupause). */
 export const isBuildTool = (t: Tool): t is BuildId => t !== "hand" && t !== "delete" && t !== "blueprint";
 
-const isBeltTool = (t: Tool) => isBuildTool(t) && !!BELT_LEVEL[t];
+const isBeltTool = (t: Tool) => isBuildTool(t) && (!!BELT_LEVEL[t] || t === "bridge");
 
 /** Blaupausen-Werkzeug: erst Bereich markieren, dann Kopie platzieren. */
 export interface BlueprintState {
@@ -187,7 +187,7 @@ export class Editor {
 
   /** Antippen mit der Hand: Gebaeude auswaehlen bzw. Auswahl aufheben. */
   select(x: number, y: number) {
-    this.selectedId = this.world.entityAt(x, y)?.id ?? null;
+    this.selectedId = this.world.topAt(x, y)?.id ?? null;
     this.inspected = this.selectedId === null && this.world.gen.oreAt(x, y) && !this.world.gen.obstacleAt(x, y) ? { x, y } : null;
     this.emit();
   }
@@ -215,7 +215,7 @@ export class Editor {
 
   deleteSelected() {
     const e = this.selected;
-    if (e) this.world.demolish(e.x, e.y);
+    if (e) this.world.demolish(e.x, e.y, e.layer);
     this.selectedId = null;
     this.emit();
   }
@@ -232,6 +232,19 @@ export class Editor {
   setSelectedFilter(item: ItemId | null) {
     const e = this.selected;
     if (e?.type === "sorter") e.filter = item;
+    this.emit();
+  }
+
+  /** Zielhafen des ausgewaehlten Drohnenhafens setzen (null = sendet nicht). */
+  setSelectedTarget(to: { x: number; y: number } | null) {
+    const e = this.selected;
+    if (e?.type === "drone_port" && (!to || to.x !== e.x || to.y !== e.y)) e.target = to;
+    this.emit();
+  }
+
+  toggleSelectedRamp() {
+    const e = this.selected;
+    if (e?.type === "ramp") this.world.toggleRamp(e);
     this.emit();
   }
 
@@ -315,21 +328,23 @@ export class Editor {
         this.emit();
         return;
       }
-      const e = w.demolish(x, y);
+      // Erst die Bruecke, dann den Boden darunter.
+      const e = w.demolish(x, y, w.entityAt(x, y, 1) ? 1 : 0);
       if (e && e.id === this.selectedId) this.selectedId = null;
       return;
     }
 
     const belt = isBeltTool(tool);
+    const layer = layerOf(tool);
     if (belt && moveDir !== null) {
       // Beim Ziehen zeigt das vorige Band zum neuen Feld -> Kurven entstehen von selbst.
-      const prev = w.entityAt(s.lastX, s.lastY);
+      const prev = w.entityAt(s.lastX, s.lastY, layer);
       if (prev?.type === "belt" && s.placed.has(prev.id)) w.setDir(prev, moveDir);
       this.rotation = moveDir;
       this.emit();
     }
 
-    const existing = w.entityAt(x, y);
+    const existing = w.entityAt(x, y, layer);
     if (existing) {
       // Schnelleren Bohrer auf einen alten setzen tauscht ihn aus.
       if ((tool === "extractor_mk2" || tool === "extractor_mk3") && existing.type.startsWith("extractor")) {
@@ -341,6 +356,11 @@ export class Editor {
         return;
       }
       if (existing.type !== entityTypeOf(tool)) return;
+      // Hochband ueber alte Hochbaender ziehen bringt sie auf die schnellste Stufe.
+      if (tool === "bridge" && existing.type === "belt" && existing.level < w.bestBeltLevel()) {
+        existing.level = w.bestBeltLevel();
+        w.version++;
+      }
       // Schnelleres Band ueber alte Baender ziehen ruestet sie auf.
       if (belt && existing.type === "belt" && existing.level < BELT_LEVEL[tool as BuildId]!) {
         if (!w.upgradeBelt(existing, tool as BuildId)) this.fail(w.isUnlocked(tool as BuildId) ? "cost" : "locked");
