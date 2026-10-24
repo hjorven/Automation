@@ -1,7 +1,7 @@
 import { BufferGeometry, Color, ConeGeometry, DodecahedronGeometry, ExtrudeGeometry, IcosahedronGeometry, Path, Shape, TorusGeometry } from "three";
 import type { ItemId } from "../../sim/items";
 import { ITEM_COLORS } from "../palette";
-import { Paint, boxG, cylG, paintMat, paintMetalMat } from "./kit";
+import { Paint, boxG, coneG, cylG, paintMat, paintMetalMat } from "./kit";
 
 /** Zahnrad, flach auf dem Boden (Unterkante y = 0), optional mit Loch. */
 export function gearShapeGeometry(teeth: number, rOuter: number, rInner: number, rHole: number, depth: number): BufferGeometry {
@@ -187,6 +187,14 @@ export function itemGeometry(item: ItemId): BufferGeometry {
       for (const y of [0.04, 0.16]) p.add(cylG(0.095, 0.095, 0.02, 10, 0, y, 0), band);
       p.add(cylG(0.08, 0.08, 0.005, 10, 0, 0.22, 0), shade(item === "fuel" ? c : 0x2a2830, 0.1));
       p.add(cylG(0.018, 0.018, 0.02, 6, 0.04, 0.22, 0.02), 0xb4bcc6);
+      return p.build();
+    }
+    case "water": {
+      // Kanister mit Tropfen-Symbol (Wasser fliesst sonst nur in Rohren).
+      p.add(cylG(0.08, 0.08, 0.2, 10), c);
+      p.add(cylG(0.085, 0.085, 0.02, 10, 0, 0.06, 0), shade(c, -0.2));
+      p.add(cylG(0.03, 0.03, 0.04, 8, 0, 0.2, 0), 0xdfe4ea);
+      p.add(coneG(0.04, 0.07, 8, 0, 0.1, 0.075), 0xdff2ff);
       return p.build();
     }
     case "concrete": {

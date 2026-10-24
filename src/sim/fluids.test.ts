@@ -55,9 +55,9 @@ describe("Rohre und Fluessigkeiten", () => {
     const w = new World();
     w.unlockAll();
     const g = w.place("generator_steam", 0, 0, RIGHT) as Generator;
-    g.accept("coal", 2, w);
+    g.accept("coal");
     expect(g.burning).toBe(false);
-    for (let i = 0; i < 4; i++) g.accept("water", 2, w);
+    for (let i = 0; i < 4; i++) g.accept("water");
     expect(g.burning).toBe(true);
     w.place("assembler", 2, 0, RIGHT, recipeById("gear")!); // Verbraucher
     w.step();

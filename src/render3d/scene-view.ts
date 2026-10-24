@@ -18,6 +18,7 @@ import { dayPhase, sunAngle } from "../sim/daycycle";
 import { ACCUMULATOR } from "../sim/progression";
 import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "../sim/dir";
 import { Storage, type Belt, type BeltItem, type Entity } from "../sim/entities";
+import { FluidCarrier, PIPE_FLOW, pipeConnections } from "../sim/fluids";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import type { World } from "../sim/world";
 import type { CameraRig } from "./camera-rig";
@@ -32,7 +33,9 @@ import {
   extractorMk2Model,
   extractorMk3Model,
   extractorModel,
+  fluidTankModel,
   foundryModel,
+  generatorSteamModel,
   generatorCoalModel,
   generatorFuelModel,
   hubModel,
@@ -41,6 +44,8 @@ import {
   manufacturerModel,
   mat,
   mergerModel,
+  pipeModel,
+  pipePumpModel,
   placeholderModel,
   pumpModel,
   radarModel,
@@ -55,8 +60,9 @@ import {
   straightBedGeometry,
   straightFrameGeometry,
   tunnelModel,
+  waterPumpModel,
 } from "./models";
-import { PALETTE } from "./palette";
+import { ITEM_COLORS, PALETTE } from "./palette";
 import { Environment } from "./environment";
 import { HazardsView } from "./hazards-view";
 import { TerrainView } from "./terrain";
@@ -257,13 +263,13 @@ export class SceneView {
     // Uebrige Gebaeude als eigene Modelle.
     for (const [id, node] of this.nodes) {
       const e = world.entities.get(id);
-      if (!e || e.type === "belt" || nodeKey(e) !== node.key) this.removeNode(id);
+      if (!e || e.type === "belt" || nodeKey(e, world) !== node.key) this.removeNode(id);
     }
     for (const e of world.entities.values()) {
       if (e.type === "belt") continue;
       let node = this.nodes.get(e.id);
       if (!node) {
-        node = this.createNode(e);
+        node = this.createNode(e, world);
         this.nodes.set(e.id, node);
       }
       // Schwebendes Symbol: Rezept-Ergebnis bzw. Filter des Sortierers.
@@ -280,11 +286,11 @@ export class SceneView {
     }
   }
 
-  private createNode(e: Exclude<Entity, Belt>): EntityNode {
-    const tplKey = templateKey(e);
+  private createNode(e: Exclude<Entity, Belt>, world: World): EntityNode {
+    const tplKey = templateKey(e, world);
     let tpl = this.templates.get(tplKey);
     if (!tpl) {
-      tpl = buildTemplate(e);
+      tpl = buildTemplate(e, pipeMask(e, world));
       this.templates.set(tplKey, tpl);
     }
     const root = tpl.clone();
@@ -310,7 +316,7 @@ export class SceneView {
     root.position.set(e.x + 0.5, 0, e.y + 0.5);
     root.rotation.y = yawOf(e.dir);
     this.entitiesGroup.add(root);
-    return { root, key: nodeKey(e), own, spin: 0, phase: 0 };
+    return { root, key: nodeKey(e, world), own, spin: 0, phase: 0 };
   }
 
   private removeNode(id: number) {
@@ -354,6 +360,32 @@ export class SceneView {
           root.getObjectByName("crank")!.rotation.z = -node.phase;
           break;
         }
+        case "water_pump": {
+          node.spin += ((e.working ? 10 : 0) - node.spin) * Math.min(1, dt * 2);
+          root.getObjectByName("head")!.rotation.y += node.spin * dt;
+          break;
+        }
+        case "pipe":
+        case "pipe_pump":
+        case "fluid_tank": {
+          const net = e.net;
+          const glow = node.own[0];
+          const color = net?.fluid ? ITEM_COLORS[net.fluid] : PALETTE.glass;
+          if (glow.emissive.getHex() !== color) glow.emissive.setHex(color);
+          // Durchfluss als Lichtwelle, die die Leitung entlanglaeuft.
+          const flow = net ? Math.min(1, net.flow / PIPE_FLOW) : 0;
+          const level = net?.fluid ? 0.3 : 0.06;
+          glow.emissiveIntensity = level + flow * (0.35 + 0.35 * Math.sin(t * 9 - (e.x + e.y) * 0.8));
+          if (e.type === "pipe_pump") {
+            const target = net && net.flow > 0.01 ? 4 + 10 * flow : 0.6;
+            node.spin += (target - node.spin) * Math.min(1, dt * 2);
+            root.getObjectByName("head")!.rotation.y += node.spin * dt;
+          } else if (e.type === "fluid_tank") {
+            const fill = net && net.capacity ? net.amount / net.capacity : 0;
+            root.getObjectByName("fill")!.scale.y = Math.max(0.02, fill);
+          }
+          break;
+        }
         case "storage": {
           const fill = root.getObjectByName("fill")!;
           fill.scale.y = Math.max(0.02, e.queue.length / Storage.CAPACITY);
@@ -372,13 +404,14 @@ export class SceneView {
           break;
         }
         case "generator_coal":
-        case "generator_fuel": {
+        case "generator_fuel":
+        case "generator_steam": {
           const on = e.burning;
           node.spin += ((on ? 9 : 0) - node.spin) * Math.min(1, dt * 1.5);
           const glow = node.own[0];
           const target = on ? 1.4 + 0.5 * Math.sin(t * 11 + id) : 0.03;
           glow.emissiveIntensity += (target - glow.emissiveIntensity) * Math.min(1, dt * 4);
-          smoke(root, on, t, id, root.userData.chimney, e.type === "generator_fuel" ? 1.4 : 0.8);
+          smoke(root, on, t, id, root.userData.chimney, e.type === "generator_coal" ? 0.8 : 1.4);
           if (e.type === "generator_coal") {
             root.getObjectByName("arm")!.rotation.z -= node.spin * dt;
           } else {
@@ -576,16 +609,37 @@ function beltVariant(b: Belt, input: Dir): BeltVariant {
   return 0;
 }
 
-function nodeKey(e: Entity): string {
-  return `${templateKey(e)}:${e.dir}`;
+function nodeKey(e: Entity, world: World): string {
+  return `${templateKey(e, world)}:${e.dir}`;
 }
 
-function templateKey(e: Entity): string {
-  return e.type === "tunnel" ? `tunnel:${e.exit ? "out" : "in"}` : e.type;
+function templateKey(e: Entity, world: World): string {
+  if (e.type === "tunnel") return `tunnel:${e.exit ? "out" : "in"}`;
+  if (e instanceof FluidCarrier) return `${e.type}:${pipeMask(e, world)}`;
+  return e.type;
 }
 
-function buildTemplate(e: Exclude<Entity, Belt>): Group {
+/** Angeschlossene Seiten eines Rohrteils im Modellraum (Bit k = Richtung dir + k). */
+function pipeMask(e: Entity, world: World): number {
+  if (!(e instanceof FluidCarrier)) return 0;
+  const m = pipeConnections(e, (x, y) => world.entityAt(x, y));
+  let local = 0;
+  for (let k = 0; k < 4; k++) if (m & (1 << ((e.dir + k) % 4))) local |= 1 << k;
+  return local;
+}
+
+function buildTemplate(e: Exclude<Entity, Belt>, mask: number): Group {
   switch (e.type) {
+    case "pipe":
+      return pipeModel(mask);
+    case "pipe_pump":
+      return pipePumpModel(mask);
+    case "fluid_tank":
+      return fluidTankModel(mask);
+    case "water_pump":
+      return waterPumpModel();
+    case "generator_steam":
+      return generatorSteamModel();
     case "extractor":
       return extractorModel();
     case "extractor_mk2":

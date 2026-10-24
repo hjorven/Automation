@@ -129,6 +129,18 @@ export const PALETTE = {
   manufacturerDark: 0x2a4a73,
   statusLight: 0x5fe38a,
 
+  // Rohre und Fluessigkeiten (models/fluids.ts).
+  pipe: 0x8a96a6,
+  pipeFlange: 0x4c5868,
+  pipeJoint: 0x6c7888,
+  pipePump: 0x2f7f8f,
+  pipePumpBlade: 0xdfe4ea,
+  tank: 0xc8d0da,
+  waterPump: 0x2f6fa8,
+  waterPumpDeck: 0x6e5636,
+  waterPumpBlade: 0xffc94a,
+  boiler: 0x8a3a2a,
+
   // Bandstufen: Farbe der Seitenschienen.
   beltRailMk2: 0xd9533a,
   beltRailMk3: 0x3a8fd9,

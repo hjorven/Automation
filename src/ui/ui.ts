@@ -27,6 +27,7 @@ const ERROR_TEXT: Record<string, string> = {
   fog: "Noch nicht erkundet. Baue näher heran oder stelle einen Radarturm auf",
   lava: "Nicht auf Lava",
   cliff: "Hier ist Fels im Weg",
+  dry: "Nur auf Wasser baubar",
   ore: "Hier gibt es keinen passenden Rohstoff",
 };
 

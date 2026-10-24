@@ -2,6 +2,7 @@ import type { Editor } from "../game/editor";
 import { Extractor, Generator, Machine, Storage, type Entity } from "../sim/entities";
 import { EXTRACT_TICKS, TICKS_PER_SECOND } from "../sim/constants";
 import { BIOME_NAMES, PURITY_NAMES, PURITY_RATE } from "../sim/terrain";
+import { FluidCarrier, PIPE_REACH } from "../sim/fluids";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import { ACCUMULATOR, MAX_TIER, SOLAR_POWER, TIERS, buildCost, powerUse } from "../sim/progression";
 import { sunlight } from "../sim/daycycle";
@@ -243,7 +244,14 @@ function status(e: Entity, w: Editor["world"]): Status {
     if (e.buffer !== null) return { text: "Ausgang blockiert", cls: "bad" };
     return slow ? { text: "Zu wenig Strom", cls: "warn" } : { text: "Fördert", cls: "ok" };
   }
+  if (e instanceof FluidCarrier) {
+    const net = e.net;
+    if (!net?.fluid) return { text: "Leer", cls: "" };
+    if (net.limit < 0.999) return { text: "Durchfluss gedrosselt", cls: "warn" };
+    return { text: itemName(net.fluid), cls: "ok" };
+  }
   if (e instanceof Generator) {
+    if (e.waterNeed && e.water < e.waterNeed && e.burnLeft <= 0) return { text: "Kein Wasser", cls: "bad" };
     if (!e.burning) return { text: `Kein ${itemName(e.spec.fuel)}`, cls: "bad" };
     return { text: `${e.spec.power} MW`, cls: "ok" };
   }
@@ -306,9 +314,24 @@ function liveBodyOf(e: Entity, w: Editor["world"]): string {
     const perMin = (60 * TICKS_PER_SECOND) / e.interval;
     return `<div class="io"><span class="caps">Rate</span><span class="num">${fmt(perMin)} / min</span>${power}</div>` + bar(pct);
   }
-  if (e instanceof Generator) {
+  if (e instanceof FluidCarrier) {
+    const net = e.net;
+    if (!net) return "";
+    const perSec = (n: number) => fmt(n * TICKS_PER_SECOND);
+    const pumps = net.boosters ? `, ${net.boosters} Rohrpumpe${net.boosters > 1 ? "n" : ""}` : "";
     return (
-      `<div class="io"><span class="caps">Brennstoff</span><span class="chips">${dot(e.spec.fuel)}<span class="num">${e.fuel}/${Generator.FUEL_CAPACITY}</span></span>` +
+      `<div class="io"><span class="caps">Inhalt</span><span class="chips">${net.fluid ? dot(net.fluid) : ""}<span class="num">${fmt(net.amount)}/${fmt(net.capacity)}</span></span>` +
+      `<span class="caps">Durchfluss</span><span class="num">${perSec(net.flow)} / s (max ${perSec(net.limit)})</span>` +
+      `<span class="caps">Leitung</span><span>${net.members.length} Teile${pumps}, Reichweite ${PIPE_REACH * (1 + net.boosters)}</span>${power}</div>` +
+      bar((100 * net.amount) / Math.max(1, net.capacity))
+    );
+  }
+  if (e instanceof Generator) {
+    const water = e.waterNeed
+      ? `<span class="caps">Wasser</span><span class="chips">${dot("water")}<span class="num">${e.water}/${Generator.WATER_CAPACITY}</span></span>`
+      : "";
+    return (
+      `<div class="io"><span class="caps">Brennstoff</span><span class="chips">${dot(e.spec.fuel)}<span class="num">${e.fuel}/${Generator.FUEL_CAPACITY}</span></span>${water}` +
       `<span class="caps">Leistung</span><span class="num">${e.spec.power} MW</span></div>` +
       bar((100 * e.fuel) / Generator.FUEL_CAPACITY)
     );

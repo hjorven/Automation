@@ -19,7 +19,9 @@ import {
   extractorMk2Model,
   extractorMk3Model,
   extractorModel,
+  fluidTankModel,
   foundryModel,
+  generatorSteamModel,
   generatorCoalModel,
   generatorFuelModel,
   hubModel,
@@ -27,6 +29,8 @@ import {
   manufacturerModel,
   mat,
   mergerModel,
+  pipeModel,
+  pipePumpModel,
   pumpModel,
   radarModel,
   wreckModel,
@@ -38,6 +42,7 @@ import {
   splitterModel,
   storageModel,
   tunnelModel,
+  waterPumpModel,
   straightBedGeometry,
   straightFrameGeometry,
 } from "./models";
@@ -109,11 +114,16 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["radar", radarModel],
     ["wreck", wreckModel],
     ["turret", turretModel],
+    ["pipe", () => pipeModel(0b0011)],
+    ["pipe_pump", () => pipePumpModel(0b0101)],
+    ["fluid_tank", () => fluidTankModel(0b0001)],
+    ["water_pump", waterPumpModel],
+    ["generator_steam", generatorSteamModel],
   ];
   for (const [type, build] of builders) {
     const model = build();
     // Hub ist hoeher als die anderen Gebaeude: etwas weiter herauszoomen.
-    cam.zoom = type === "hub" || type === "radar" ? 0.82 : type.startsWith("belt") ? 1.15 : 1;
+    cam.zoom = type === "hub" || type === "radar" ? 0.82 : type === "fluid_tank" ? 0.86 : type.startsWith("belt") ? 1.15 : 1;
     cam.updateProjectionMatrix();
     model.traverse((o) => {
       // Glut und Leuchtfeuer sichtbar machen, Rauch ausblenden.
