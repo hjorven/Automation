@@ -13,6 +13,7 @@ import {
 } from "three";
 import type { BuildId } from "../sim/progression";
 import {
+  accumulatorModel,
   assemblerModel,
   createBeltTexture,
   extractorMk2Model,
@@ -29,6 +30,7 @@ import {
   pumpModel,
   refineryModel,
   smelterModel,
+  solarModel,
   sorterModel,
   splitterModel,
   storageModel,
@@ -98,6 +100,8 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["generator_fuel", generatorFuelModel],
     ["refinery", refineryModel],
     ["manufacturer", manufacturerModel],
+    ["solar", solarModel],
+    ["accumulator", accumulatorModel],
   ];
   for (const [type, build] of builders) {
     const model = build();

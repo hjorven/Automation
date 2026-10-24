@@ -26,6 +26,8 @@ export const TOOL_NAMES: Partial<Record<string, string>> = {
   sorter: "Sortierer",
   generator_coal: "Kohlekraftwerk",
   generator_fuel: "Treibstoffkraftwerk",
+  solar: "Solarfeld",
+  accumulator: "Batteriespeicher",
   pump: "Ölpumpe",
   refinery: "Raffinerie",
   manufacturer: "Fertigungsanlage",
@@ -38,6 +40,7 @@ const SHORT_NAMES: Partial<Record<string, string>> = {
   merger: "Zusammenf.",
   generator_coal: "Kohle-KW",
   generator_fuel: "Treibst.-KW",
+  accumulator: "Speicher",
   manufacturer: "Fert.-Anlage",
 };
 
@@ -61,6 +64,8 @@ export const TOOL_INFO: Partial<Record<string, string>> = {
   sorter: "Das gewählte Item geht nach vorne, alles andere nach links und rechts.",
   generator_coal: "Verbrennt Kohle und liefert 75 MW Strom.",
   generator_fuel: "Verbrennt Treibstoff und liefert 150 MW Strom.",
+  solar: "Liefert bei voller Sonne 20 MW, morgens und abends weniger, nachts nichts.",
+  accumulator: "Speichert Überschuss und gibt ihn nachts oder bei Spitzenlast wieder ab (bis 30 MW).",
   pump: "Fördert Rohöl. Nur auf Ölquellen.",
   refinery: "Verarbeitet Rohöl zu Kunststoff, Gummi und Treibstoff.",
   manufacturer: "Große Fertigung für Rezepte mit bis zu vier Zutaten.",
@@ -104,6 +109,8 @@ const GROUP_OF: Partial<Record<string, ToolGroup>> = {
   sorter: "transport",
   generator_coal: "power",
   generator_fuel: "power",
+  solar: "power",
+  accumulator: "power",
   hub: "base",
 };
 

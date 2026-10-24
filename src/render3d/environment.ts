@@ -12,17 +12,13 @@ import {
   Vector3,
   type Scene,
 } from "three";
+import { phaseAt, sunAngle } from "../sim/daycycle";
 import { glowMat, terrainUniforms } from "./terrain";
 
 // Licht, Nebel und Tag/Nacht-Zyklus. Die Tageszeit folgt der Spielzeit
 // (world.tick), damit sie mit dem Spielstand gespeichert wird.
 
-/** Laenge von Tag und Nacht in Sekunden Spielzeit. Die Nacht ist kuerzer und hell genug zum Bauen. */
-const DAY_SECONDS = 12 * 60;
-const NIGHT_SECONDS = 4 * 60;
-const CYCLE = DAY_SECONDS + NIGHT_SECONDS;
-/** Ein neues Spiel beginnt am Vormittag. */
-const START_SECONDS = DAY_SECONDS * 0.3;
+// Laenge von Tag und Nacht steht in der Simulation (Solarstrom, Angriffe).
 
 interface Look {
   sky: Color;
@@ -96,7 +92,7 @@ export class Environment {
   /** Phase 0..1: 0 Sonnenaufgang, 0.75 Sonnenuntergang, danach Nacht. */
   phase(gameSeconds: number): number {
     if (this.fixedPhase !== null) return this.fixedPhase;
-    return (((gameSeconds + START_SECONDS) % CYCLE) + CYCLE) % CYCLE / CYCLE;
+    return phaseAt(gameSeconds);
   }
 
   /**
@@ -105,8 +101,7 @@ export class Environment {
    */
   update(target: Vector3, distance: number, gameSeconds: number, t: number, tier: number) {
     // Sonnenwinkel: 0..PI am Tag, PI..2PI in der (kuerzeren) Nacht.
-    const p = this.phase(gameSeconds) * CYCLE;
-    const theta = p < DAY_SECONDS ? (Math.PI * p) / DAY_SECONDS : Math.PI + (Math.PI * (p - DAY_SECONDS)) / NIGHT_SECONDS;
+    const theta = sunAngle(this.phase(gameSeconds));
     const e = Math.sin(theta);
     const dayF = smoothstep(-0.05, 0.25, e);
     const night = 1 - smoothstep(-0.25, 0.02, e);

@@ -51,7 +51,7 @@ export const TIERS: readonly Tier[] = [
   {
     name: "Energie",
     cost: [s("circuit", 100), s("iron_plate", 200), s("copper_plate", 100)],
-    buildings: ["generator_coal"],
+    buildings: ["generator_coal", "solar", "accumulator"],
     recipes: [],
   },
   {
@@ -111,6 +111,13 @@ export const POWER_TIER = 3;
 /** Grundversorgung durch den Hub in MW. */
 export const HUB_POWER = 60;
 
+/** Solarfeld bei voller Sonne in MW (nachts 0). */
+export const SOLAR_POWER = 20;
+/** Batteriespeicher: Kapazitaet in MJ (MW mal Sekunden) und hoechste Lade-/Entladeleistung in MW. */
+export const ACCUMULATOR = { capacity: 3600, rate: 30 };
+/** Nachts brauchen alle Verbraucher so viel mehr Strom (Licht und Heizung). */
+export const NIGHT_DEMAND = 1.25;
+
 /** Baukosten aus dem Hub-Lager; beim Abreissen gibt es sie zurueck. */
 export const BUILD_COSTS: Partial<Record<BuildId, ItemStack[]>> = {
   hub: [s("iron_plate", 20), s("copper_plate", 10)],
@@ -121,6 +128,8 @@ export const BUILD_COSTS: Partial<Record<BuildId, ItemStack[]>> = {
   storage: [s("iron_plate", 20), s("gear", 5)],
   sorter: [s("gear", 4), s("circuit", 2)],
   generator_coal: [s("iron_plate", 20), s("gear", 10), s("circuit", 5)],
+  solar: [s("iron_plate", 10), s("wire", 20), s("circuit", 6)],
+  accumulator: [s("iron_plate", 15), s("copper_plate", 20), s("circuit", 8)],
   foundry: [s("iron_plate", 10), s("gear", 6), s("circuit", 4)],
   belt_mk2: [s("steel", 1)],
   extractor_mk2: [s("steel", 4), s("gear", 4), s("circuit", 2)],
