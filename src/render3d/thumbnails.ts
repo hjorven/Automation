@@ -28,6 +28,7 @@ import {
   mat,
   mergerModel,
   pumpModel,
+  radarModel,
   refineryModel,
   smelterModel,
   solarModel,
@@ -102,11 +103,12 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["manufacturer", manufacturerModel],
     ["solar", solarModel],
     ["accumulator", accumulatorModel],
+    ["radar", radarModel],
   ];
   for (const [type, build] of builders) {
     const model = build();
     // Hub ist hoeher als die anderen Gebaeude: etwas weiter herauszoomen.
-    cam.zoom = type === "hub" ? 0.82 : type.startsWith("belt") ? 1.15 : 1;
+    cam.zoom = type === "hub" || type === "radar" ? 0.82 : type.startsWith("belt") ? 1.15 : 1;
     cam.updateProjectionMatrix();
     model.traverse((o) => {
       // Glut und Leuchtfeuer sichtbar machen, Rauch ausblenden.

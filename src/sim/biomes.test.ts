@@ -147,7 +147,8 @@ describe("Spielstand und Weltgenerator", () => {
         for (let x = -r; x <= r && !spot; x++) if (w.gen.obstacleAt(x, r) === kind) spot = [x, r];
       }
       expect(spot, kind).not.toBeNull();
-      w.tier = 0;
+      expect(w.buildError("belt", spot![0], spot![1])).toBe("fog");
+      w.reveal(spot![0], spot![1], 2);
       expect(w.buildError("belt", spot![0], spot![1])).toBe(kind);
     }
   });

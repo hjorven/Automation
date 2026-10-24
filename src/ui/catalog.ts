@@ -31,6 +31,7 @@ export const TOOL_NAMES: Partial<Record<string, string>> = {
   pump: "Ölpumpe",
   refinery: "Raffinerie",
   manufacturer: "Fertigungsanlage",
+  radar: "Radarturm",
 };
 
 /** Kurzname fuer die Werkzeugleiste (sonst der volle Name). */
@@ -69,6 +70,7 @@ export const TOOL_INFO: Partial<Record<string, string>> = {
   pump: "Fördert Rohöl. Nur auf Ölquellen.",
   refinery: "Verarbeitet Rohöl zu Kunststoff, Gummi und Treibstoff.",
   manufacturer: "Große Fertigung für Rezepte mit bis zu vier Zutaten.",
+  radar: "Lichtet den Nebel in weitem Umkreis. Gebäude erkunden sonst nur ihre direkte Umgebung.",
 };
 
 export const TOOL_KEYS: Partial<Record<string, string>> = {
@@ -112,6 +114,7 @@ const GROUP_OF: Partial<Record<string, ToolGroup>> = {
   solar: "power",
   accumulator: "power",
   hub: "base",
+  radar: "base",
 };
 
 export function toolName(t: string): string {

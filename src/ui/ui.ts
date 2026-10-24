@@ -19,6 +19,7 @@ const ERROR_TEXT: Record<string, string> = {
   cost: "Nicht genug im Hub-Lager",
   blocked: "Feld ist belegt",
   water: "Nicht auf Wasser",
+  fog: "Noch nicht erkundet. Baue näher heran oder stelle einen Radarturm auf",
   lava: "Nicht auf Lava",
   cliff: "Hier ist Fels im Weg",
   ore: "Hier gibt es keinen passenden Rohstoff",

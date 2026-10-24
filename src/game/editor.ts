@@ -206,8 +206,8 @@ export class Editor {
     const recipe = tool === "assembler" ? this.assemblerRecipe : null;
     const error = w.buildError(tool, x, y);
     if (error) {
-      // Belegte Felder sind normal; fehlendes Erz nur beim Antippen melden, nicht beim Ziehen.
-      if (error !== "blocked" && (error !== "ore" || moveDir === null)) this.fail(error);
+      // Belegte Felder sind normal; fehlendes Erz und Nebel nur beim Antippen melden, nicht beim Ziehen.
+      if (error !== "blocked" && ((error !== "ore" && error !== "fog") || moveDir === null)) this.fail(error);
       return;
     }
     const e = w.build(tool, x, y, this.rotation, recipe);
