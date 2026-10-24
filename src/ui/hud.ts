@@ -1,4 +1,4 @@
-import type { Editor } from "../game/editor";
+import { isBuildTool, type Editor } from "../game/editor";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import { MAX_TIER, NIGHT_DEMAND, TIERS, buildCost } from "../sim/progression";
 import { toolName } from "./catalog";
@@ -71,7 +71,7 @@ export class Hud {
     }
 
     const tool = this.editor.tool;
-    if (tool !== "hand" && tool !== "delete") {
+    if (isBuildTool(tool)) {
       html += `<div class="build-cost" data-build><span class="caps">${toolName(tool)}</span></div>`;
     }
 
@@ -138,7 +138,7 @@ export class Hud {
 
     const build = this.el.querySelector<HTMLElement>("[data-build]");
     const tool = this.editor.tool;
-    if (build && tool !== "hand" && tool !== "delete") {
+    if (build && isBuildTool(tool)) {
       const cost = buildCost(tool);
       const html = `<span class="caps">${toolName(tool)}</span>` + (cost.length ? costChips(cost, w.storage) : `<span class="chip have">kostenlos</span>`);
       // Nur bei Aenderung schreiben, sonst flackert es bei jedem Tick.

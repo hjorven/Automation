@@ -1,4 +1,5 @@
 import type { Tool } from "../game/editor";
+import { BLUEPRINT_TIER } from "../sim/blueprint";
 import { TIERS, buildingTier } from "../sim/progression";
 import { RESEARCH } from "../sim/research";
 
@@ -9,6 +10,7 @@ import { RESEARCH } from "../sim/research";
 export const TOOL_NAMES: Partial<Record<string, string>> = {
   hand: "Hand",
   delete: "Abriss",
+  blueprint: "Blaupause",
   belt: "Förderband",
   extractor: "Bohrer",
   smelter: "Schmelze",
@@ -48,6 +50,7 @@ const SHORT_NAMES: Partial<Record<string, string>> = {
 export const TOOL_INFO: Partial<Record<string, string>> = {
   hand: "Gebäude antippen für Details, ziehen verschiebt die Ansicht.",
   delete: "Gebäude abreißen. Baukosten gehen zurück ins Hub-Lager.",
+  blueprint: "Bereich mit dem Finger markieren, kopieren und als Ganzes woanders einfügen. Gespeicherte Blaupausen findest du in der Übersicht.",
   belt: "Transportiert Items. Mit dem Finger ziehen, Kurven entstehen von selbst.",
   extractor: "Fördert Erz oder Kohle. Nur auf Rohstofffeldern.",
   smelter: "Schmilzt Erz zu Platten und stellt sich selbst auf das Erz ein.",
@@ -86,6 +89,7 @@ export const TOOL_KEYS: Partial<Record<string, string>> = {
   foundry: "0",
   extractor_mk2: "b",
   delete: "x",
+  blueprint: "c",
 };
 
 export type ToolGroup = "transport" | "mining" | "production" | "power" | "base";
@@ -138,7 +142,7 @@ export function buildTools(): Tool[] {
 }
 
 export function toolTier(t: Tool): number {
-  return t === "hand" || t === "delete" ? 0 : buildingTier(t);
+  return t === "hand" || t === "delete" ? 0 : t === "blueprint" ? BLUEPRINT_TIER : buildingTier(t);
 }
 
 /** Bild fuer ein Werkzeug; Bandstufen teilen sich das Bild des Bandes. */

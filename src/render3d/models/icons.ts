@@ -2,11 +2,12 @@ import { ExtrudeGeometry, Group, Shape, type BufferGeometry } from "three";
 import { PALETTE as P } from "../palette";
 import { Paint, boxG, cylG } from "./kit";
 
-// Werkzeuge ohne Gebaeude (Hand, Abriss, Drehen, Menue) als kleine Objekte auf
-// der Bodenplatte der Gebaeude: Greifer, Dynamit, Drehteller, Steuerpult.
+// Werkzeuge ohne Gebaeude (Hand, Abriss, Drehen, Menue, Blaupause) als kleine
+// Objekte auf der Bodenplatte der Gebaeude: Greifer, Dynamit, Drehteller,
+// Steuerpult, Planrolle.
 // Nur fuer die Werkzeugleiste.
 
-export type IconTool = "hand" | "delete" | "rotate" | "menu";
+export type IconTool = "hand" | "delete" | "rotate" | "menu" | "blueprint";
 
 /** Pfeil nach +x als Relief (Unterkante y = 0), gedreht wie die Sim-Richtung `dir`. */
 function arrowSolid(depth: number, dir: number): BufferGeometry {
@@ -93,6 +94,21 @@ export function iconModel(tool: IconTool, dir = 0): Group {
       glass.translate(0, 0.42, -0.12);
       p.add(glass, P.glass);
       for (const x of [-0.16, 0, 0.16]) p.add(boxG(0.1, 0.03, 0.08, x, 0.4, 0.14), x ? P.port : 0x3fae5a);
+      break;
+    }
+    case "blueprint": {
+      // Ausgerollter Bauplan mit Gitter und einer Rolle am Rand.
+      p.add(boxG(0.7, 0.02, 0.56, 0, 0.1, 0.02), 0x2f6fd0);
+      for (const k of [-2, -1, 0, 1, 2]) {
+        p.add(boxG(0.012, 0.008, 0.5, k * 0.13, 0.12, 0.02), 0xdcecff);
+        if (Math.abs(k) < 2) p.add(boxG(0.64, 0.008, 0.012, 0, 0.12, 0.02 + k * 0.13), 0xdcecff);
+      }
+      p.add(boxG(0.16, 0.012, 0.16, -0.12, 0.125, -0.04), 0xffffff);
+      p.add(boxG(0.1, 0.012, 0.22, 0.16, 0.125, 0.06), 0xffffff);
+      const roll = cylG(0.06, 0.06, 0.6, 10, 0, -0.3, 0);
+      roll.rotateX(Math.PI / 2);
+      roll.translate(0.38, 0.16, 0.02);
+      p.add(roll, 0x245aa8);
       break;
     }
   }
