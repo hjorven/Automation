@@ -11,6 +11,8 @@ import { Hud, Toasts, showTierBanner } from "./hud";
 import { Overview, type OverviewTab } from "./overview";
 import { Panel } from "./panel";
 import { DeliveryStats } from "./stats";
+import { Efficiency } from "./efficiency";
+import { factoryScore } from "../sim/value";
 import { Toolbar, type Thumbs } from "./toolbar";
 import { Tutorial } from "./tutorial";
 
@@ -38,6 +40,7 @@ export class Ui {
   private readonly tutorial: Tutorial;
   private readonly toasts = new Toasts();
   private readonly stats: DeliveryStats;
+  private readonly efficiency: Efficiency;
   private tier: number;
   private errorAt = 0;
   private storageVersion = -1;
@@ -47,13 +50,18 @@ export class Ui {
   constructor(
     private readonly editor: Editor,
     onMenu: () => void,
+    focus: (x: number, y: number) => void = () => {},
   ) {
     const stats = (this.stats = new DeliveryStats(editor.world));
+    this.efficiency = new Efficiency(editor.world);
     const unlocks = (tier: number) => this.unlocksHtml(tier);
     this.toolbar = new Toolbar(editor, this.thumbs, onMenu);
     this.hud = new Hud(editor, (tab) => this.openOverview(tab));
     this.panel = new Panel(editor, this.thumbs, unlocks, (tab = "tiers") => this.openOverview(tab));
-    this.overview = new Overview(editor, stats, unlocks, (b, r) => this.contentHtml(b, r));
+    this.overview = new Overview(editor, stats, unlocks, (b, r) => this.contentHtml(b, r), this.efficiency, (x, y) => {
+      focus(x, y);
+      editor.select(x, y);
+    });
     this.tutorial = new Tutorial(editor, (t) => this.toolbar.buttonFor(t));
     this.tier = editor.world.tier;
 
@@ -81,6 +89,12 @@ export class Ui {
     const w = this.editor.world;
     if (w.tier !== this.tier) this.onTierChange();
     this.stats.sample();
+    this.efficiency.sample();
+    // Bestwert erst nach einer vollen Minute Messung, sonst springen die Raten.
+    if (this.stats.minutes >= 1) {
+      const score = factoryScore(this.stats.items().map((i) => [i, this.stats.perMinute(i)]));
+      if (score > w.bestScore) w.bestScore = score;
+    }
     if (w.storageVersion !== this.storageVersion) {
       this.storageVersion = w.storageVersion;
       this.toolbar.refresh();

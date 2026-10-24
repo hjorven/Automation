@@ -909,6 +909,13 @@ button.danger {
   gap: 4px;
   padding: 10px 16px 0;
   border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  /* Viele Reiter: auf schmalen Bildschirmen seitlich wischen. */
+  overflow-x: auto;
+  touch-action: pan-x;
+  scrollbar-width: none;
+}
+#screen .tabs button {
+  flex: none;
 }
 #screen .tabs button {
   border: none;
@@ -1347,4 +1354,80 @@ button.danger {
   font-weight: 600;
   color: var(--warn);
   letter-spacing: 0.04em;
+}
+
+/* ---------- Statistik: Rang, Effizienz, Engpaesse ---------- */
+
+.rank-ladder {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+  gap: 6px;
+}
+.rank-ladder .rank {
+  display: grid;
+  gap: 2px;
+  padding: 8px;
+  border-radius: var(--radius-sm);
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  color: var(--faint);
+  font-size: 12px;
+}
+.rank-ladder .rank .n {
+  font: 600 15px var(--mono);
+}
+.rank-ladder .rank.done {
+  color: var(--muted);
+  border-color: var(--edge);
+}
+.rank-ladder .rank.now {
+  color: var(--accent);
+  border-color: var(--edge-strong);
+  background: var(--accent-dim);
+}
+.load {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 120px;
+}
+.load .bar {
+  display: block;
+  flex: 1;
+  min-width: 60px;
+}
+.load .bar .fill {
+  display: block;
+}
+.load .bar.low .fill {
+  background: var(--bad);
+}
+.load .num {
+  font-size: 12px;
+  min-width: 40px;
+  text-align: right;
+}
+.bottlenecks {
+  display: grid;
+  gap: 6px;
+}
+.bottleneck {
+  display: grid;
+  grid-template-columns: minmax(90px, 1fr) minmax(90px, 1fr) minmax(110px, 1.4fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  text-align: left;
+}
+.bottleneck .go {
+  color: var(--accent);
+  font-weight: 600;
+}
+@media (max-width: 520px) {
+  .bottleneck {
+    grid-template-columns: 1fr auto;
+  }
+  .bottleneck .load {
+    grid-column: 1 / -1;
+  }
 }

@@ -3,17 +3,22 @@ import { ITEM_ORDER } from "../sim/items";
 import { MAX_TIER, TIERS } from "../sim/progression";
 import { recipeById } from "../sim/recipes";
 import { RESEARCH, researchById, type ResearchNode } from "../sim/research";
+import { TICKS_PER_SECOND } from "../sim/constants";
+import { UPGRADES, upgradeCost, upgradeFactor, type UpgradeId } from "../sim/upgrades";
+import { RANKS, factoryScore, rankFor } from "../sim/value";
 import { toolName } from "./catalog";
 import { byId, costChips, dot, fmt, itemName, recipeHtml } from "./dom";
+import { WHY_TEXT, type Efficiency } from "./efficiency";
 import { tierTrack } from "./panel";
 import { BUCKETS, type DeliveryStats } from "./stats";
 
-export type OverviewTab = "tiers" | "research" | "orders" | "inventory" | "stats";
+export type OverviewTab = "tiers" | "research" | "orders" | "upgrades" | "inventory" | "stats";
 
 const TABS: { id: OverviewTab; label: string }[] = [
   { id: "tiers", label: "Stufen" },
   { id: "research", label: "Forschung" },
   { id: "orders", label: "Aufträge" },
+  { id: "upgrades", label: "Upgrades" },
   { id: "inventory", label: "Lager" },
   { id: "stats", label: "Statistik" },
 ];
@@ -30,6 +35,8 @@ export class Overview {
     private readonly stats: DeliveryStats,
     private readonly unlocksHtml: (tier: number) => string,
     private readonly contentHtml: (buildings: readonly string[], recipes: readonly string[]) => string,
+    private readonly efficiency: Efficiency,
+    private readonly focus: (x: number, y: number) => void,
   ) {
     this.el.addEventListener("click", this.onClick);
     this.scrim.addEventListener("click", () => this.close());
@@ -75,9 +82,11 @@ export class Overview {
           ? this.researchHtml()
           : this.tab === "orders"
             ? this.ordersHtml()
-            : this.tab === "inventory"
-              ? this.inventoryHtml()
-              : this.statsHtml();
+            : this.tab === "upgrades"
+              ? this.upgradesHtml()
+              : this.tab === "inventory"
+                ? this.inventoryHtml()
+                : this.statsHtml();
     body.scrollTop = scroll;
   }
 
@@ -103,12 +112,44 @@ export class Overview {
       } else {
         html += `<div class="row muted">Startausstattung</div>`;
       }
-      html += unlocks ? `<div class="row">${unlocks}</div>` : `<div class="row muted">Ziel: Fabrik vollenden</div>`;
+      html += unlocks
+        ? `<div class="row">${unlocks}</div>`
+        : i === MAX_TIER
+          ? `<div class="row muted">Schaltet die Endlos-Upgrades frei</div>`
+          : `<div class="row muted">Ziel: Fabrik vollenden</div>`;
       if (i === w.tier + 1) {
         html += `<button class="primary upgrade" data-action="upgrade"${w.canAfford(t.cost) ? "" : " disabled"}>Upgrade kaufen</button>`;
       }
       html += `</div>`;
     });
+    if (w.upgradesUnlocked) {
+      html += `<button class="primary upgrade" data-tab="upgrades" style="justify-self:start">Weiter mit Endlos-Upgrades</button>`;
+    }
+    return html + `</div>`;
+  }
+
+  private upgradesHtml(): string {
+    const w = this.editor.world;
+    const open = w.upgradesUnlocked;
+    let html = open
+      ? `<div class="muted" style="margin-bottom:10px">Die Fabrik ist komplett. Jede Upgrade-Stufe macht sie dauerhaft besser und kostet mehr als die vorige.</div>`
+      : `<div class="empty-note">Endlos-Upgrades gibt es ab Stufe ${MAX_TIER} (${TIERS[MAX_TIER].name}).</div>`;
+    html += `<div class="tier-list">`;
+    for (const u of UPGRADES) {
+      const level = w.upgradeLevel(u.id);
+      const cost = upgradeCost(u, level);
+      const now = upgradeFactor(u, level);
+      const next = upgradeFactor(u, level + 1);
+      html +=
+        `<div class="tier-card${open ? " next" : " later"}"><div class="t-num">${level}</div>` +
+        `<div class="t-name">${u.name}<span class="pill${level ? " ok" : ""}">${fmtPct(now)}</span></div>` +
+        `<div class="row muted">${u.text} Nächste Stufe: ${fmtPct(next)}.</div>` +
+        `<div class="row">${costChips(cost, open ? w.storage : undefined)}</div>`;
+      if (open) {
+        html += `<button class="primary upgrade" data-upgrade="${u.id}"${w.canAfford(cost) ? "" : " disabled"}>Stufe ${level + 1} kaufen</button>`;
+      }
+      html += `</div>`;
+    }
     return html + `</div>`;
   }
 
@@ -216,12 +257,25 @@ export class Overview {
       total += this.stats.total.get(i) ?? 0;
       rate += this.stats.perMinute(i);
     }
+    const w = this.editor.world;
+    const score = factoryScore(items.map((i) => [i, this.stats.perMinute(i)]));
+    const rank = rankFor(score);
+    const best = rankFor(w.bestScore);
+    let allTime = 0;
+    for (const n of w.delivered.values()) allTime += n;
+    const hours = w.tick / TICKS_PER_SECOND / 3600;
     let html =
       `<div class="stat-summary">` +
+      `<div class="tile"><div class="n">${fmt(score)}</div><div class="caps">Fabrikwert / min</div></div>` +
+      `<div class="tile"><div class="n">${fmt(100 * this.efficiency.overall())}&thinsp;%</div><div class="caps">Auslastung</div></div>` +
       `<div class="tile"><div class="n">${fmt(rate)}</div><div class="caps">Items / min</div></div>` +
-      `<div class="tile"><div class="n">${fmt(total)}</div><div class="caps">Geliefert</div></div>` +
-      `<div class="tile"><div class="n">${fmt(mins, mins < 10 ? 1 : 0)}</div><div class="caps">Minuten gemessen</div></div>` +
+      `<div class="tile"><div class="n">${fmt(allTime)}</div><div class="caps">Geliefert insgesamt</div></div>` +
+      `<div class="tile"><div class="n">${fmt(hours, 1)}&thinsp;h</div><div class="caps">Spielzeit</div></div>` +
       `</div>`;
+    html += this.rankHtml(rank.index, best.index, score);
+    html += this.efficiencyHtml();
+    html +=
+      `<div class="caps" style="margin:18px 0 8px">Lieferungen dieser Sitzung &middot; ${fmt(total)} in ${fmt(mins, mins < 10 ? 1 : 0)} min</div>`;
     if (!items.length) {
       return html + `<div class="empty-note">Noch keine Lieferungen in dieser Sitzung. Führe ein Band zum Hub.</div>`;
     }
@@ -233,13 +287,66 @@ export class Overview {
         `<tr><td>${dot(i)}${itemName(i)}</td><td class="r num">${fmt(this.stats.perMinute(i), 1)}</td>` +
         `<td class="r num">${fmt(this.stats.total.get(i) ?? 0)}</td><td>${sparkline(this.stats.series(i))}</td></tr>`;
     }
-    return html + `</tbody></table><div class="muted" style="margin-top:10px;font-size:12px">Gezählt seit dem Laden der Seite.</div>`;
+    return (
+      html +
+      `</tbody></table><div class="muted" style="margin-top:10px;font-size:12px">Raten seit dem Laden der Seite. ` +
+      `Der Fabrikwert gewichtet jedes Item mit den Rohstoffen, die in ihm stecken.</div>`
+    );
+  }
+
+  /** Rangleiter nach Fabrikwert: aktueller Rang und persoenlicher Bestwert. */
+  private rankHtml(current: number, best: number, score: number): string {
+    const w = this.editor.world;
+    const next = RANKS[current + 1];
+    let html = `<div class="caps" style="margin-bottom:8px">Rang</div><div class="rank-ladder">`;
+    RANKS.forEach((r, i) => {
+      const cls = i === current ? "now" : i <= best ? "done" : "";
+      html += `<div class="rank ${cls}" title="ab ${fmt(r.min)} / min"><span class="n">${i + 1}</span><span class="l">${r.name}</span></div>`;
+    });
+    html += `</div><div class="muted" style="margin:6px 0 16px;font-size:12px">`;
+    html += next ? `Nächster Rang ${next.name} ab ${fmt(next.min)} Fabrikwert / min (jetzt ${fmt(score)}). ` : `Höchster Rang erreicht. `;
+    html += `Bestwert: ${fmt(w.bestScore)} / min (${RANKS[best].name}).</div>`;
+    return html;
+  }
+
+  /** Effizienz-Ranking je Gebaeudeart und die groessten Engpaesse. */
+  private efficiencyHtml(): string {
+    const types = this.efficiency.byType();
+    if (!types.length) return "";
+    let html =
+      `<div class="caps" style="margin-bottom:8px">Effizienz-Ranking</div>` +
+      `<table class="stat-table"><thead><tr><th>#</th><th>Gebäude</th><th class="r">Anzahl</th><th>Auslastung</th></tr></thead><tbody>`;
+    types.forEach((t, k) => {
+      html +=
+        `<tr><td class="num">${k + 1}</td><td>${toolName(t.type)}</td><td class="r num">${t.count}</td>` +
+        `<td>${loadBar(t.load)}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+    const worst = this.efficiency.bottlenecks();
+    if (worst.length) {
+      html += `<div class="caps" style="margin:16px 0 8px">Engpässe</div><div class="bottlenecks">`;
+      for (const u of worst) {
+        html +=
+          `<button class="bottleneck" data-focus="${u.x},${u.y}"><span>${toolName(u.type)}</span>` +
+          `<span class="muted">${WHY_TEXT[u.why]}</span>${loadBar(u.load)}<span class="go">Zeigen</span></button>`;
+      }
+      html += `</div>`;
+    }
+    return html;
   }
 
   private onClick = (ev: MouseEvent) => {
     const btn = (ev.target as HTMLElement).closest<HTMLElement>("button");
     if (!btn) return;
-    if (btn.dataset.tab) {
+    if (btn.dataset.upgrade) {
+      this.editor.buyUpgrade(btn.dataset.upgrade as UpgradeId);
+      this.bodyKey = "";
+      this.update();
+    } else if (btn.dataset.focus) {
+      const [x, y] = btn.dataset.focus.split(",").map(Number);
+      this.close();
+      this.focus(x, y);
+    } else if (btn.dataset.tab) {
       this.tab = btn.dataset.tab as OverviewTab;
       this.bodyKey = "";
       this.update();
@@ -249,6 +356,16 @@ export class Overview {
     else if (btn.dataset.order) this.editor.fulfillOrder(Number(btn.dataset.order));
     else if (btn.dataset.discard) this.editor.discardOrder(Number(btn.dataset.discard));
   };
+}
+
+function fmtPct(f: number): string {
+  return `${f >= 1 ? "+" : ""}${fmt(100 * (f - 1))} %`;
+}
+
+function loadBar(load: number): string {
+  const pct = Math.round(100 * load);
+  const cls = pct >= 80 ? "done" : pct < 40 ? "low" : "";
+  return `<span class="load"><span class="bar ${cls}"><span class="fill" style="width:${pct}%"></span></span><span class="num">${pct}&thinsp;%</span></span>`;
 }
 
 function sparkline(values: number[]): string {
