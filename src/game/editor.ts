@@ -116,6 +116,18 @@ export class Editor {
     this.emit();
   }
 
+  research(id: string) {
+    if (this.world.doResearch(id)) this.emit();
+  }
+
+  fulfillOrder(index: number) {
+    if (this.world.fulfillOrder(index)) this.emit();
+  }
+
+  discardOrder(index: number) {
+    if (this.world.discardOrder(index)) this.emit();
+  }
+
   /** `tap`: kurzes Antippen statt Ziehen (dreht ein vorhandenes gleiches Gebaeude). */
   strokeBegin(x: number, y: number, tap: boolean) {
     this.stroke = { lastX: x, lastY: y, placed: new Set(), tap };

@@ -47,7 +47,8 @@ export function recipeHtml(r: Recipe): string {
   const side = (s: ItemStack[]) =>
     s.map((x) => `<span class="chip">${dot(x.item)}<span class="num">${x.count}</span>&nbsp;${itemName(x.item)}</span>`).join("");
   const secs = (r.ticks / TICKS_PER_SECOND).toLocaleString("de-DE", { maximumFractionDigits: 1 });
-  return `${side(r.inputs)}<span class="arrow">&#9654;</span>${side(r.outputs)}<span class="time">${secs} s</span>`;
+  const alt = r.alt ? `<span class="alt-name">Alternative: ${r.name ?? r.id}</span>` : "";
+  return `${alt}${side(r.inputs)}<span class="arrow">&#9654;</span>${side(r.outputs)}<span class="time">${secs} s</span>`;
 }
 
 export function fmt(n: number, digits = 0): string {

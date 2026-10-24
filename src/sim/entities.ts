@@ -15,6 +15,8 @@ export interface Host {
   /** Auslastung der Kraftwerke (0..1): so schnell verbrennen sie Brennstoff. */
   readonly powerLoad: number;
   recipeUnlocked(r: Recipe): boolean;
+  /** Tempo-Faktor fuer Bohrer und Pumpen aus der Forschung (1 = normal). */
+  readonly extractBoost?: number;
 }
 
 export type ExtractorKind = "extractor" | "extractor_mk2" | "extractor_mk3" | "pump";
@@ -170,7 +172,7 @@ export class Extractor extends EntityBase {
   }
 
   update(host: Host): void {
-    if (this.buffer === null && (this.timer += host.powerFactor) >= this.interval) {
+    if (this.buffer === null && (this.timer += host.powerFactor * (host.extractBoost ?? 1)) >= this.interval) {
       this.timer -= this.interval;
       this.buffer = this.ore;
     }
