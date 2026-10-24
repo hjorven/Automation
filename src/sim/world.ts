@@ -39,13 +39,15 @@ import {
 import { ALT_RECIPES, recipeById, recipesFor, type ItemStack, type Recipe } from "./recipes";
 import { RESEARCH, researchById, researchForRecipe, totalBonus, type Bonus } from "./research";
 import { ORDER_SLOTS, makeOrder, type Order } from "./orders";
-import { oreAt, waterAt } from "./terrain";
+import { DEFAULT_GEN, type WorldGen } from "./terrain";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
 export type BuildError =
   | "blocked" // Feld belegt
   | "ore" // Bohrer/Pumpe ohne passenden Rohstoff darunter
   | "water" // Feld liegt im Wasser
+  | "lava" // Feld liegt in Lava (Vulkan)
+  | "cliff" // Fels (Berge)
   | "locked"
   | "cost";
 
@@ -54,6 +56,8 @@ export type ResearchError = "unknown" | "done" | "tier" | "requires" | "cost";
 
 export class World implements Host {
   tick = 0;
+  /** Weltgenerator: Erz, Hindernisse, Biome und Reinheit je Feld. */
+  gen: WorldGen = DEFAULT_GEN;
   /** Steigt bei jeder Aenderung am Gebaeudebestand (fuer das Neuzeichnen). */
   version = 0;
   /** Hub-Stufe (Index in TIERS). */
@@ -92,8 +96,9 @@ export class World implements Host {
   private readonly grid = new Map<string, Entity>();
   private nextId = 1;
 
-  static createDefault(): World {
+  static createDefault(gen: WorldGen = DEFAULT_GEN): World {
     const w = new World();
+    w.gen = gen;
     w.place("hub", 0, 0, 0);
     w.fillOrders();
     return w;
@@ -125,7 +130,7 @@ export class World implements Host {
 
   canPlace(type: EntityType, x: number, y: number): boolean {
     if (this.grid.has(tileKey(x, y))) return false;
-    const ore = oreAt(x, y);
+    const ore = this.gen.oreAt(x, y);
     if (type === "pump") return ore === "crude_oil";
     if (type === "extractor" || type === "extractor_mk2" || type === "extractor_mk3") {
       return !!ore && ore !== "crude_oil";
@@ -249,7 +254,8 @@ export class World implements Host {
     const type = entityTypeOf(id);
     if (!this.canPlace(type, x, y)) return this.grid.has(tileKey(x, y)) ? "blocked" : "ore";
     // Nur fuer den Spieler: alte Spielstaende mit Gebaeuden auf heutigen Seen laden weiter.
-    if (waterAt(x, y)) return "water";
+    const obstacle = this.gen.obstacleAt(x, y);
+    if (obstacle) return obstacle;
     if (!this.canAfford(buildCost(id))) return "cost";
     return null;
   }
@@ -334,7 +340,7 @@ export class World implements Host {
       case "extractor_mk2":
       case "extractor_mk3":
       case "pump":
-        e = new Extractor(id, x, y, dir, oreAt(x, y)!, type);
+        e = new Extractor(id, x, y, dir, this.gen.oreAt(x, y)!, type, this.gen.purityAt(x, y));
         break;
       case "smelter":
       case "assembler":

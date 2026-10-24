@@ -19,7 +19,7 @@ import {
   Vector3,
   type WebGLProgramParametersWithUniforms,
 } from "three";
-import { oreAt, waterAt } from "../sim/terrain";
+import { DEFAULT_GEN, type BiomeId, type Obstacle, type Purity, type WorldGen } from "../sim/terrain";
 
 // Landschaft: Boden mit Biomen und Raster, Erz-Vorkommen, Deko und Seen.
 // Alles wird in Chunks rund um das Kameraziel erzeugt; pro Chunk entstehen nur
@@ -55,6 +55,16 @@ const BIOME = {
   rock: new Color(0x5d6569),
   sand: new Color(0xbdb088),
   lakeBed: new Color(0x3f5c5a),
+  forest: new Color(0x4b7a4a),
+  forestDark: new Color(0x3d6844),
+  desert: new Color(0xd3b47c),
+  dune: new Color(0xe0c48f),
+  mountain: new Color(0x7b7f80),
+  mountainDark: new Color(0x5f6466),
+  snow: new Color(0xe8eef2),
+  basalt: new Color(0x3b3533),
+  ash: new Color(0x5a4b44),
+  lavaBed: new Color(0x2a1a14),
 };
 
 interface OreStyle {
@@ -93,6 +103,11 @@ const DECO = {
   bulb: 0x7fe8ff,
   bulbWarm: 0xffd27a,
   rockGlow: 0x6fd8ff,
+  conifer: 0x2f5f45,
+  cactus: 0x5f8f4e,
+  deadBush: 0x8a7458,
+  basaltRock: 0x2e2a29,
+  ember: 0xff7a2a,
 };
 
 // ------------------------------------------------------------ Vorlagen
@@ -127,6 +142,8 @@ const T = {
   slab: template(new BoxGeometry(0.3, 0.06, 0.22)),
   pool: template(new CylinderGeometry(0.34, 0.36, 0.02, 9)),
   shard: template(new OctahedronGeometry(0.035, 0)),
+  conifer: template(coniferGeometry()),
+  cactus: template(cactusGeometry()),
 };
 
 /** Kleinteile, die aus der Ferne wegfallen. */
@@ -161,6 +178,21 @@ function tuftGeometry(): BufferGeometry {
   return mergeParts(parts);
 }
 
+function coniferGeometry(): BufferGeometry {
+  const parts: BufferGeometry[] = [];
+  for (let i = 0; i < 3; i++) parts.push(new ConeGeometry(0.3 - i * 0.07, 0.42, 7, 1, true).translate(0, 0.42 + i * 0.26, 0));
+  return mergeParts(parts);
+}
+
+function cactusGeometry(): BufferGeometry {
+  const trunk = new CylinderGeometry(0.06, 0.07, 0.6, 6).translate(0, 0.3, 0);
+  const armA = new CylinderGeometry(0.045, 0.045, 0.22, 6).translate(0.13, 0.4, 0);
+  const elbowA = new CylinderGeometry(0.045, 0.045, 0.12, 6).rotateZ(Math.PI / 2).translate(0.08, 0.3, 0);
+  const armB = new CylinderGeometry(0.04, 0.04, 0.16, 6).translate(-0.11, 0.33, 0);
+  const elbowB = new CylinderGeometry(0.04, 0.04, 0.1, 6).rotateZ(Math.PI / 2).translate(-0.07, 0.25, 0);
+  return mergeParts([trunk, armA, elbowA, armB, elbowB]);
+}
+
 function crownGeometry(): BufferGeometry {
   const a = new ConeGeometry(0.28, 0.5, 6, 1, true).translate(0, 0.5, 0);
   const b = new ConeGeometry(0.2, 0.4, 6, 1, true).translate(0, 0.78, 0);
@@ -186,6 +218,11 @@ const waterMat = new MeshStandardMaterial({
 });
 waterMat.onBeforeCompile = (s) => patchWater(s);
 waterMat.customProgramCacheKey = () => "terrain-water";
+
+/** Lava leuchtet von selbst und wabert langsam. */
+const lavaMat = new MeshBasicMaterial({ vertexColors: true });
+lavaMat.onBeforeCompile = (s) => patchLava(s);
+lavaMat.customProgramCacheKey = () => "terrain-lava";
 
 const SHADER_COMMON = /* glsl */ `
 uniform float uTime;
@@ -240,6 +277,18 @@ function patchGround(s: WebGLProgramParametersWithUniforms) {
     );
 }
 
+function patchLava(s: WebGLProgramParametersWithUniforms) {
+  addUniformsAndWorldPos(s);
+  s.fragmentShader = s.fragmentShader.replace(
+    "#include <color_fragment>",
+    /* glsl */ `#include <color_fragment>
+    vec2 lp = vWPos.xz * 1.3;
+    float flow = tNoise(lp + vec2(uTime * 0.21, uTime * 0.13)) * 0.6 + tNoise(lp * 2.7 - uTime * 0.17) * 0.4;
+    float crust = smoothstep(0.55, 0.75, tNoise(lp * 1.6 + 3.0 + uTime * 0.05));
+    diffuseColor.rgb = mix(diffuseColor.rgb * (0.75 + 0.6 * flow), vec3(0.16, 0.08, 0.06), crust * 0.75);`,
+  );
+}
+
 /** Wellen ueber die Normale, Himmel spiegelt sich am flachen Blickwinkel. */
 function patchWater(s: WebGLProgramParametersWithUniforms) {
   addUniformsAndWorldPos(s);
@@ -290,6 +339,18 @@ export class TerrainView {
   readonly group = new Group();
   private readonly chunks = new Map<string, Chunk>();
   private occupied: Occupied = () => false;
+  private gen: WorldGen = DEFAULT_GEN;
+
+  /** Anderer Weltgenerator (z. B. nach dem Laden): alles neu aufbauen. */
+  setGen(gen: WorldGen) {
+    if (gen === this.gen) return;
+    this.gen = gen;
+    for (const c of this.chunks.values()) {
+      this.group.remove(c.group);
+      disposeChunk(c);
+    }
+    this.chunks.clear();
+  }
 
   /** Erzeugt alle Chunks, die den Kreis `viewRadius` um (cx, cz) beruehren, und verwirft entfernte. */
   update(cx: number, cz: number, viewRadius: number) {
@@ -304,7 +365,7 @@ export class TerrainView {
         if (chunkDistance(chx, chz, cx, cz) > viewRadius) continue;
         const key = `${chx},${chz}`;
         if (!this.chunks.has(key)) {
-          const c = buildChunk(chx, chz);
+          const c = buildChunk(chx, chz, this.gen);
           c.far = chunkCenterDistance(chx, chz, cx, cz) > DETAIL_RADIUS;
           this.rebuildDeco(c);
           this.chunks.set(key, c);
@@ -375,64 +436,79 @@ function hiddenKey(c: Chunk, occupied: Occupied): string {
 
 interface TileInfo {
   ore: string | null;
-  water: boolean;
+  obstacle: Obstacle | null;
+  /** Wasser oder Lava: Boden senkt sich ab. */
+  sunk: boolean;
+  biome: BiomeId;
+  purity: Purity;
   color: Color;
-  /** Seetiefe 0..1 (nur Wasserfelder). */
+  /** Seetiefe 0..1 (nur Wasser- und Lavafelder). */
   depth: number;
+  /** Felshoehe (nur Felsfelder). */
+  height: number;
 }
 
-function buildChunk(chx: number, chz: number): Chunk {
+function buildChunk(chx: number, chz: number, gen: WorldGen): Chunk {
   const group = new Group();
   const x0 = chx * CHUNK;
   const z0 = chz * CHUNK;
   const W = CHUNK + 2 * MARGIN;
 
-  // Felder samt Rand vorberechnen.
-  const water = new Uint8Array(W * W);
+  // Hindernisse samt Rand vorberechnen.
+  const obstacles: (Obstacle | null)[] = new Array(W * W);
   for (let j = 0; j < W; j++) {
-    for (let i = 0; i < W; i++) water[j * W + i] = waterAt(x0 - MARGIN + i, z0 - MARGIN + j) ? 1 : 0;
+    for (let i = 0; i < W; i++) obstacles[j * W + i] = gen.obstacleAt(x0 - MARGIN + i, z0 - MARGIN + j);
   }
-  const isWater = (tx: number, tz: number) => water[(tz - z0 + MARGIN) * W + (tx - x0 + MARGIN)] === 1;
+  const obstacleAt = (tx: number, tz: number) => obstacles[(tz - z0 + MARGIN) * W + (tx - x0 + MARGIN)];
   const tiles: TileInfo[] = [];
   const tileAt = (tx: number, tz: number) => tiles[(tz - z0 + 1) * (CHUNK + 2) + (tx - x0 + 1)];
   for (let tz = z0 - 1; tz <= z0 + CHUNK; tz++) {
     for (let tx = x0 - 1; tx <= x0 + CHUNK; tx++) {
-      const w = isWater(tx, tz);
-      const ore = w ? null : oreAt(tx, tz);
+      const obstacle = obstacleAt(tx, tz);
+      const sunk = obstacle === "water" || obstacle === "lava";
+      const ore = obstacle ? null : gen.oreAt(tx, tz);
+      const biome = gen.biomeAt(tx, tz);
       let depth = 0;
-      if (w) {
+      let height = 0;
+      if (obstacle) {
         let n = 0;
-        for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) n += isWater(tx + dx, tz + dz) ? 1 : 0;
+        for (let dz = -2; dz <= 2; dz++) for (let dx = -2; dx <= 2; dx++) n += obstacleAt(tx + dx, tz + dz) === obstacle ? 1 : 0;
         depth = Math.max(0, (n - 9) / 16);
+        if (obstacle === "cliff") height = 0.35 + depth * 0.9 + hash(tx, tz, 7) * 0.25;
       }
       const color = new Color();
-      if (w) color.copy(BIOME.sand);
+      if (obstacle === "water") color.copy(BIOME.sand);
+      else if (obstacle === "lava") color.copy(BIOME.basalt);
+      else if (obstacle === "cliff") color.copy(BIOME.mountainDark).lerp(BIOME.snow, smooth01((height - 0.9) / 0.4));
       else if (ore) color.setHex(oreStyle(ore).ground).offsetHSL(0, 0, (hash(tx, tz, 5) - 0.5) * 0.05);
-      else biomeColor(tx, tz, color);
-      tiles.push({ ore, water: w, color, depth });
+      else biomeColor(tx, tz, biome, color);
+      tiles.push({ ore, obstacle, sunk, biome, purity: ore ? gen.purityAt(tx, tz) : "normal", color, depth, height });
     }
   }
 
   group.add(buildGround(x0, z0, tileAt));
-  const waterMesh = buildWater(x0, z0, tileAt);
-  if (waterMesh) group.add(waterMesh);
+  for (const kind of ["water", "lava"] as const) {
+    const liquid = buildLiquid(x0, z0, tileAt, kind);
+    if (liquid) group.add(liquid);
+  }
 
   const placements: Placement[] = [];
   for (let tz = z0; tz < z0 + CHUNK; tz++) {
     for (let tx = x0; tx < x0 + CHUNK; tx++) {
       const t = tileAt(tx, tz);
-      if (t.water) continue;
-      if (t.ore) placeOre(placements, tx, tz, oreStyle(t.ore));
+      if (t.sunk) continue;
+      if (t.obstacle === "cliff") placeCliff(placements, tx, tz, t.height);
+      else if (t.ore) placeOre(placements, tx, tz, oreStyle(t.ore), t.purity);
       else {
-        const shore = tileAt(tx + 1, tz).water || tileAt(tx - 1, tz).water || tileAt(tx, tz + 1).water || tileAt(tx, tz - 1).water;
-        placeDeco(placements, tx, tz, shore);
+        const shore = [tileAt(tx + 1, tz), tileAt(tx - 1, tz), tileAt(tx, tz + 1), tileAt(tx, tz - 1)].some((n) => n.obstacle === "water");
+        placeDeco(placements, tx, tz, t.biome, shore);
       }
     }
   }
   return { group, deco: null, glow: null, placements, hiddenKey: "-", far: false };
 }
 
-/** Feld-Ecken und -Mitten als Gitter; Wasserfelder senken sich zur Seemitte ab. */
+/** Feld-Ecken und -Mitten als Gitter; Seen senken sich zur Mitte ab, Felsen ragen auf. */
 function buildGround(x0: number, z0: number, tileAt: (x: number, z: number) => TileInfo): Mesh {
   const N = CHUNK * SUB;
   const pos = new Float32Array((N + 1) * (N + 1) * 3);
@@ -444,14 +520,20 @@ function buildGround(x0: number, z0: number, tileAt: (x: number, z: number) => T
     for (let i = 0; i <= N; i++) {
       const wx = x0 + i / SUB;
       const wz = z0 + j / SUB;
-      const { tiles, allWater, depth } = adjacentTiles(wx, wz, tileAt);
+      const { tiles, allSunk, allCliff, depth, height } = adjacentTiles(wx, wz, tileAt);
       c.setRGB(0, 0, 0);
       for (const t of tiles) c.add(t.color);
       c.multiplyScalar(1 / tiles.length);
       let y = 0;
-      if (allWater) {
+      if (allSunk) {
         y = -(0.1 + 0.32 * depth);
-        c.lerp(deep.copy(BIOME.lakeBed), Math.min(1, 0.4 + depth));
+        const lava = tiles[0].obstacle === "lava";
+        c.lerp(deep.copy(lava ? BIOME.lavaBed : BIOME.lakeBed), Math.min(1, 0.4 + depth));
+      } else if (allCliff) {
+        y = height;
+      } else if (tiles.some((t) => t.obstacle === "cliff")) {
+        // Fuss des Felsens: leicht angehoben, damit die Flanke nicht senkrecht ist.
+        y = 0.06;
       }
       pos[v * 3] = wx;
       pos[v * 3 + 1] = y;
@@ -489,36 +571,42 @@ function adjacentTiles(wx: number, wz: number, tileAt: (x: number, z: number) =>
   const xs = onX ? [wx - 1, wx] : [Math.floor(wx)];
   const zs = onZ ? [wz - 1, wz] : [Math.floor(wz)];
   const tiles: TileInfo[] = [];
-  let allWater = true;
+  let allSunk = true;
+  let allCliff = true;
   let depth = 0;
+  let height = Infinity;
   for (const z of zs) {
     for (const x of xs) {
       const t = tileAt(x, z);
       tiles.push(t);
-      allWater &&= t.water;
+      allSunk &&= t.sunk && t.obstacle === tiles[0].obstacle;
+      allCliff &&= t.obstacle === "cliff";
       depth += t.depth;
+      height = Math.min(height, t.height);
     }
   }
-  return { tiles, allWater, depth: depth / tiles.length };
+  return { tiles, allSunk, allCliff, depth: depth / tiles.length, height };
 }
 
-function buildWater(x0: number, z0: number, tileAt: (x: number, z: number) => TileInfo): Mesh | null {
+function buildLiquid(x0: number, z0: number, tileAt: (x: number, z: number) => TileInfo, kind: "water" | "lava"): Mesh | null {
   const pos: number[] = [];
   const col: number[] = [];
-  const shallow = new Color(0x5fb8b0);
-  const deepCol = new Color(0x1d5a7a);
+  const lava = kind === "lava";
+  const shallow = new Color(lava ? 0xff8a2a : 0x5fb8b0);
+  const deepCol = new Color(lava ? 0xd8341a : 0x1d5a7a);
   const c = new Color();
   const vert = (wx: number, wz: number) => {
-    const { allWater, depth } = adjacentTiles(wx, wz, tileAt);
-    const d = allWater ? depth : 0;
+    const { allSunk, depth } = adjacentTiles(wx, wz, tileAt);
+    const d = allSunk ? depth : 0;
     c.copy(shallow).lerp(deepCol, Math.min(1, d * 1.6));
     pos.push(wx, WATER_Y, wz);
-    col.push(c.r, c.g, c.b, 0.45 + 0.45 * Math.min(1, d * 2));
+    if (lava) col.push(c.r, c.g, c.b);
+    else col.push(c.r, c.g, c.b, 0.45 + 0.45 * Math.min(1, d * 2));
   };
   const step = 1 / SUB;
   for (let tz = z0; tz < z0 + CHUNK; tz++) {
     for (let tx = x0; tx < x0 + CHUNK; tx++) {
-      if (!tileAt(tx, tz).water) continue;
+      if (tileAt(tx, tz).obstacle !== kind) continue;
       for (let j = 0; j < SUB; j++) {
         for (let i = 0; i < SUB; i++) {
           const ax = tx + i * step;
@@ -538,23 +626,40 @@ function buildWater(x0: number, z0: number, tileAt: (x: number, z: number) => Ti
   if (pos.length === 0) return null;
   const geo = new BufferGeometry();
   geo.setAttribute("position", new BufferAttribute(new Float32Array(pos), 3));
-  geo.setAttribute("color", new BufferAttribute(new Float32Array(col), 4));
+  geo.setAttribute("color", new BufferAttribute(new Float32Array(col), lava ? 3 : 4));
   geo.setAttribute("normal", new BufferAttribute(new Float32Array(pos.length).map((_, i) => (i % 3 === 1 ? 1 : 0)), 3));
-  const mesh = new Mesh(geo, waterMat);
+  const mesh = new Mesh(geo, lava ? lavaMat : waterMat);
   mesh.renderOrder = 1;
   return mesh;
 }
 
-/** Weiche Biome aus zwei Rauschfeldern: Feuchte und Gestein. */
-function biomeColor(tx: number, tz: number, out: Color): Color {
-  const { wet, rock } = biomeAt(tx, tz);
-  out.copy(BIOME.dry).lerp(BIOME.grass, smooth01((wet - 0.22) / 0.18));
-  out.lerp(BIOME.lush, smooth01((wet - 0.6) / 0.18));
-  out.lerp(BIOME.rock, smooth01((rock - 0.6) / 0.16));
+/** Bodenfarbe je Biom, mit weichen Varianten aus zwei Rauschfeldern. */
+function biomeColor(tx: number, tz: number, biome: BiomeId, out: Color): Color {
+  const { wet, rock } = biomeNoise(tx, tz);
+  switch (biome) {
+    case "forest":
+      out.copy(BIOME.forest).lerp(BIOME.forestDark, smooth01((wet - 0.4) / 0.3));
+      break;
+    case "desert":
+      out.copy(BIOME.desert).lerp(BIOME.dune, smooth01((wet - 0.35) / 0.3));
+      out.lerp(BIOME.sand, smooth01((rock - 0.65) / 0.2) * 0.6);
+      break;
+    case "mountains":
+      out.copy(BIOME.mountain).lerp(BIOME.mountainDark, smooth01((rock - 0.45) / 0.3));
+      out.lerp(BIOME.dry, smooth01((wet - 0.6) / 0.2) * 0.4);
+      break;
+    case "volcano":
+      out.copy(BIOME.basalt).lerp(BIOME.ash, smooth01((rock - 0.4) / 0.3));
+      break;
+    default:
+      out.copy(BIOME.dry).lerp(BIOME.grass, smooth01((wet - 0.22) / 0.18));
+      out.lerp(BIOME.lush, smooth01((wet - 0.6) / 0.18));
+      out.lerp(BIOME.rock, smooth01((rock - 0.6) / 0.16));
+  }
   return out.offsetHSL(0, 0, (hash(tx, tz, 1) - 0.5) * 0.035);
 }
 
-function biomeAt(tx: number, tz: number) {
+function biomeNoise(tx: number, tz: number) {
   // Rund um den Start eher gruene Wiese.
   const home = 0.25 * (1 - smooth01(Math.hypot(tx, tz) / 30));
   return {
@@ -594,64 +699,99 @@ function put(
   out.push({ tx, tz, tpl, m: _m.clone(), color, glow });
 }
 
-function placeOre(out: Placement[], tx: number, tz: number, st: OreStyle) {
+/** Funkeln auf reinen Vorkommen, wenn das Erz selbst nicht leuchtet. */
+const PURE_SPARK = 0xfff0b0;
+
+/** Reine Vorkommen: mehr und groessere Brocken, die funkeln; unreine: wenige, kleine, matte. */
+function placeOre(out: Placement[], tx: number, tz: number, st: OreStyle, purity: Purity) {
   const r = (k: number) => hash(tx, tz, 100 + k);
   const cx = tx + 0.5;
   const cz = tz + 0.5;
+  const pure = purity === "pure";
+  const impure = purity === "impure";
+  const k = pure ? 1.2 : impure ? 0.7 : 1;
+  const extra = pure ? 2 : impure ? -1 : 0;
+  const color = (hex: number, h: number) => (impure ? dull(hex) : shade(hex, h));
+  const glow = impure ? null : (st.glow ?? (pure ? PURE_SPARK : null));
   switch (st.shape) {
     case "crystal": {
-      put(out, tx, tz, T.boulder, st.accent, cx + (r(0) - 0.5) * 0.2, -0.04, cz + (r(1) - 0.5) * 0.2, r(2) * 6, 0.8, 0.45);
-      const n = 3 + Math.floor(r(3) * 2);
-      for (let k = 0; k < n; k++) {
-        const a = r(10 + k) * Math.PI * 2;
-        const d = 0.08 + r(20 + k) * 0.2;
-        const h = 0.24 + r(30 + k) * 0.3;
-        const tilt = 0.15 + r(40 + k) * 0.35;
-        put(out, tx, tz, T.crystal, k === 0 ? st.color : shade(st.color, r(50 + k)), cx + Math.cos(a) * d, 0, cz + Math.sin(a) * d, a, 1, h, 1, Math.sin(a) * tilt, -Math.cos(a) * tilt);
+      put(out, tx, tz, T.boulder, st.accent, cx + (r(0) - 0.5) * 0.2, -0.04, cz + (r(1) - 0.5) * 0.2, r(2) * 6, 0.8 * k, 0.45 * k);
+      const n = 3 + Math.floor(r(3) * 2) + extra;
+      for (let i = 0; i < n; i++) {
+        const a = r(10 + i) * Math.PI * 2;
+        const d = 0.08 + r(20 + i) * 0.2 * (pure ? 1.3 : 1);
+        const h = (0.24 + r(30 + i) * 0.3) * k;
+        const tilt = 0.15 + r(40 + i) * 0.35;
+        put(out, tx, tz, T.crystal, i === 0 && !impure ? st.color : color(st.color, r(50 + i)), cx + Math.cos(a) * d, 0, cz + Math.sin(a) * d, a, k, h, k, Math.sin(a) * tilt, -Math.cos(a) * tilt);
       }
-      if (st.glow !== null) put(out, tx, tz, T.shard, st.glow, cx + (r(4) - 0.5) * 0.4, 0.03, cz + (r(5) - 0.5) * 0.4, r(6) * 6, 1, 1.4, 1, 0, 0, true);
+      if (glow !== null) put(out, tx, tz, T.shard, glow, cx + (r(4) - 0.5) * 0.4, 0.03, cz + (r(5) - 0.5) * 0.4, r(6) * 6, k, 1.4 * k, k, 0, 0, true);
       break;
     }
     case "nugget": {
-      const n = 3 + Math.floor(r(3) * 2);
-      for (let k = 0; k < n; k++) {
-        const s = 0.7 + r(10 + k) * 0.8;
-        const color = k === n - 1 && r(9) < 0.35 ? st.accent : shade(st.color, r(20 + k));
-        put(out, tx, tz, T.nugget, color, tx + 0.2 + r(30 + k) * 0.6, 0.03 * s, tz + 0.2 + r(40 + k) * 0.6, r(50 + k) * 6, s, s * 0.75, s, r(60 + k) * 0.6);
+      const n = 3 + Math.floor(r(3) * 2) + extra;
+      for (let i = 0; i < n; i++) {
+        const s = (0.7 + r(10 + i) * 0.8) * k;
+        const c = i === n - 1 && r(9) < 0.35 ? st.accent : color(st.color, r(20 + i));
+        put(out, tx, tz, T.nugget, c, tx + 0.2 + r(30 + i) * 0.6, 0.03 * s, tz + 0.2 + r(40 + i) * 0.6, r(50 + i) * 6, s, s * 0.75, s, r(60 + i) * 0.6);
       }
-      if (st.glow !== null && r(7) < 0.6) put(out, tx, tz, T.shard, st.glow, cx + (r(4) - 0.5) * 0.5, 0.02, cz + (r(5) - 0.5) * 0.5, r(6) * 6, 0.8, 0.8, 0.8, 0, 0, true);
+      if (glow !== null && (pure || r(7) < 0.6)) put(out, tx, tz, T.shard, glow, cx + (r(4) - 0.5) * 0.5, 0.02, cz + (r(5) - 0.5) * 0.5, r(6) * 6, 0.8 * k, 0.8 * k, 0.8 * k, 0, 0, true);
       break;
     }
     case "slab": {
-      const n = 2 + Math.floor(r(3) * 2);
-      for (let k = 0; k < n; k++) {
-        const s = 0.7 + r(10 + k) * 0.6;
-        put(out, tx, tz, T.slab, shade(k === 0 ? st.accent : st.color, r(20 + k)), tx + 0.25 + r(30 + k) * 0.5, 0.02 + k * 0.035, tz + 0.25 + r(40 + k) * 0.5, r(50 + k) * 6, s, 1 + r(60 + k), s, (r(70 + k) - 0.5) * 0.5, (r(80 + k) - 0.5) * 0.5);
+      const n = 2 + Math.floor(r(3) * 2) + extra;
+      for (let i = 0; i < n; i++) {
+        const s = (0.7 + r(10 + i) * 0.6) * k;
+        put(out, tx, tz, T.slab, color(i === 0 ? st.accent : st.color, r(20 + i)), tx + 0.25 + r(30 + i) * 0.5, 0.02 + i * 0.035, tz + 0.25 + r(40 + i) * 0.5, r(50 + i) * 6, s, 1 + r(60 + i), s, (r(70 + i) - 0.5) * 0.5, (r(80 + i) - 0.5) * 0.5);
       }
       if (r(8) < 0.5) put(out, tx, tz, T.pebble, st.color, tx + 0.2 + r(9) * 0.6, 0.02, tz + 0.2 + r(11) * 0.6, r(12) * 6, 1.2);
+      if (glow !== null) put(out, tx, tz, T.shard, glow, cx + (r(4) - 0.5) * 0.4, 0.1, cz + (r(5) - 0.5) * 0.4, r(6) * 6, 0.8, 1, 0.8, 0, 0, true);
       break;
     }
     case "oil": {
-      put(out, tx, tz, T.pool, st.color, cx, 0.005, cz, r(2) * 6, 0.8 + r(3) * 0.3, 1, 0.8 + r(4) * 0.3);
-      for (let k = 0; k < 3; k++) {
-        const a = r(10 + k) * Math.PI * 2;
-        put(out, tx, tz, T.pebble, st.accent, cx + Math.cos(a) * 0.36, 0.01, cz + Math.sin(a) * 0.36, a, 1.2, 0.7);
+      put(out, tx, tz, T.pool, st.color, cx, 0.005, cz, r(2) * 6, (0.8 + r(3) * 0.3) * k, 1, (0.8 + r(4) * 0.3) * k);
+      for (let i = 0; i < 3 + extra; i++) {
+        const a = r(10 + i) * Math.PI * 2;
+        put(out, tx, tz, T.pebble, st.accent, cx + Math.cos(a) * 0.36 * k, 0.01, cz + Math.sin(a) * 0.36 * k, a, 1.2, 0.7);
       }
+      if (pure) put(out, tx, tz, T.shard, PURE_SPARK, cx, 0.03, cz, r(6) * 6, 0.6, 0.6, 0.6, 0, 0, true);
       break;
     }
   }
 }
 
-function placeDeco(out: Placement[], tx: number, tz: number, shore: boolean) {
+/** Felsnadeln und Geroell auf Felsfeldern (der Boden selbst ist schon angehoben). */
+function placeCliff(out: Placement[], tx: number, tz: number, height: number) {
+  const r = (k: number) => hash(tx, tz, 300 + k);
+  if (r(0) < 0.45) {
+    const s = 0.8 + r(1) * 0.9;
+    put(out, tx, tz, T.boulder, shade(DECO.rock, r(2)), tx + 0.2 + r(3) * 0.6, height - 0.05, tz + 0.2 + r(4) * 0.6, r(5) * 6, s, s * (0.8 + r(6)), s);
+  }
+  if (height > 1 && r(7) < 0.5) {
+    put(out, tx, tz, T.pebble, 0xf2f6f8, tx + 0.3 + r(8) * 0.4, height, tz + 0.3 + r(9) * 0.4, r(10) * 6, 1.6, 0.5);
+  }
+}
+
+function placeDeco(out: Placement[], tx: number, tz: number, biome: BiomeId, shore: boolean) {
   const d0 = Math.hypot(tx + 0.5, tz + 0.5);
   if (d0 < 2.5) return;
   const r = (k: number) => hash(tx, tz, 200 + k);
-  const { wet, rock } = biomeAt(tx, tz);
+  const at = (k: number) => [tx + 0.15 + r(k) * 0.7, tz + 0.15 + r(k + 1) * 0.7] as const;
+  switch (biome) {
+    case "forest":
+      return placeForest(out, tx, tz, r, at, shore);
+    case "desert":
+      return placeDesert(out, tx, tz, r, at);
+    case "mountains":
+      return placeMountains(out, tx, tz, r, at);
+    case "volcano":
+      return placeVolcano(out, tx, tz, r, at);
+  }
+  const { wet, rock } = biomeNoise(tx, tz);
+
   const lush = smooth01((wet - 0.6) / 0.18);
   const dry = 1 - smooth01((wet - 0.22) / 0.18);
   const rocky = smooth01((rock - 0.6) / 0.16);
   const grass = Math.max(0, 1 - lush - dry - rocky);
-  const at = (k: number) => [tx + 0.15 + r(k) * 0.7, tz + 0.15 + r(k + 1) * 0.7] as const;
 
   if (shore && r(0) < 0.4) {
     for (let k = 0; k < 4; k++) {
@@ -706,6 +846,120 @@ function shade(hex: number, h: number): number {
   return _c.setHex(hex).offsetHSL(0, 0, (h - 0.5) * 0.08).getHex();
 }
 const _c = new Color();
+/** Matte, entsaettigte Farbe fuer unreine Vorkommen. */
+function dull(hex: number): number {
+  return _c.setHex(hex).offsetHSL(0, -0.25, -0.06).getHex();
+}
+
+type Rand = (k: number) => number;
+type At = (k: number) => readonly [number, number];
+
+/** Dichter Nadelwald mit Lichtungen, Pilzleuchten und Schilf am Ufer. */
+function placeForest(out: Placement[], tx: number, tz: number, r: Rand, at: At, shore: boolean) {
+  if (shore && r(0) < 0.5) {
+    for (let k = 0; k < 4; k++) {
+      const [x, z] = at(10 + k * 2);
+      put(out, tx, tz, T.reed, shade(DECO.reed, r(30 + k)), x, 0, z, r(40 + k) * 6, 1, 0.6 + r(50 + k) * 0.7, 1, (r(60 + k) - 0.5) * 0.3);
+    }
+    return;
+  }
+  const clearing = noise(tx / 7, tz / 7, 31) < 0.35;
+  if (!clearing && r(1) < 0.3) {
+    const [x, z] = at(2);
+    const s = 0.7 + r(4) * 0.7;
+    put(out, tx, tz, T.trunk, DECO.trunk, x, 0, z, 0, s * 0.8);
+    const conifer = r(3) < 0.7;
+    put(out, tx, tz, conifer ? T.conifer : T.crown, shade(conifer ? DECO.conifer : DECO.crownLush, r(5)), x, 0, z, r(6) * 6, s, s * (0.9 + r(7) * 0.4));
+    return;
+  }
+  if (r(8) < 0.12) {
+    const [x, z] = at(9);
+    const s = 0.6 + r(11) * 0.6;
+    put(out, tx, tz, T.bush, shade(DECO.bush, r(12)), x, 0, z, r(13) * 6, s, s * 0.8);
+  }
+  for (let k = 0; k < 2; k++) {
+    if (r(20 + k) >= 0.3) continue;
+    const [x, z] = at(23 + k * 2);
+    put(out, tx, tz, T.tuft, shade(DECO.tuft, r(30 + k)), x, 0, z, r(33 + k) * 6, 0.8 + r(36 + k) * 0.6);
+  }
+  if (r(40) < 0.04) {
+    const [x, z] = at(41);
+    const h = 0.6 + r(43) * 0.5;
+    put(out, tx, tz, T.stem, DECO.stem, x, 0, z, 0, 1, h);
+    put(out, tx, tz, T.bulb, r(44) < 0.5 ? DECO.bulb : DECO.bulbWarm, x, 0.24 * h, z, r(45) * 6, 1, 1.3, 1, 0, 0, true);
+  }
+}
+
+/** Wueste: Kakteen, duerre Bueschel, Steine. */
+function placeDesert(out: Placement[], tx: number, tz: number, r: Rand, at: At) {
+  if (r(1) < 0.025) {
+    const [x, z] = at(2);
+    const s = 0.7 + r(4) * 0.7;
+    put(out, tx, tz, T.cactus, shade(DECO.cactus, r(5)), x, 0, z, r(6) * 6, s, s * (0.8 + r(7) * 0.5));
+    return;
+  }
+  if (r(8) < 0.05) {
+    const [x, z] = at(9);
+    put(out, tx, tz, T.bush, shade(DECO.deadBush, r(12)), x, 0, z, r(13) * 6, 0.5 + r(11) * 0.4, 0.4);
+  }
+  if (r(20) < 0.08) {
+    const [x, z] = at(23);
+    put(out, tx, tz, T.tuft, shade(DECO.tuftDry, r(30)), x, 0, z, r(33) * 6, 0.7 + r(36) * 0.5);
+  }
+  if (r(50) < 0.06) {
+    const [x, z] = at(52);
+    put(out, tx, tz, T.pebble, shade(0xb39a74, r(56)), x, 0.01, z, r(58) * 6, 0.8 + r(60) * 0.8, 0.6);
+  }
+}
+
+/** Berge: viel Geroell und Felsbrocken, vereinzelt Nadelbaeume. */
+function placeMountains(out: Placement[], tx: number, tz: number, r: Rand, at: At) {
+  if (r(1) < 0.025) {
+    const [x, z] = at(2);
+    const s = 0.6 + r(4) * 0.5;
+    put(out, tx, tz, T.trunk, DECO.trunk, x, 0, z, 0, s * 0.8);
+    put(out, tx, tz, T.conifer, shade(DECO.conifer, r(5)), x, 0, z, r(6) * 6, s, s);
+    return;
+  }
+  for (let k = 0; k < 2; k++) {
+    if (r(50 + k) >= 0.3) continue;
+    const [x, z] = at(52 + k * 2);
+    put(out, tx, tz, T.pebble, shade(DECO.pebble, r(56 + k)), x, 0.01, z, r(58 + k) * 6, 0.7 + r(60 + k) * 0.9, 0.6);
+  }
+  if (r(62) < 0.07) {
+    const [x, z] = at(63);
+    const s = 0.7 + r(65) * 0.8;
+    put(out, tx, tz, T.boulder, shade(DECO.rock, r(66)), x, 0, z, r(67) * 6, s, s * (0.6 + r(68) * 0.5), s * (0.8 + r(69) * 0.4));
+    if (r(70) < 0.25) put(out, tx, tz, T.shard, DECO.rockGlow, x + 0.15, 0.03, z - 0.1, r(71) * 6, 0.9, 1.6, 0.9, 0.3, 0, true);
+  }
+  if (r(20) < 0.08) {
+    const [x, z] = at(23);
+    put(out, tx, tz, T.tuft, shade(DECO.tuftDry, r(30)), x, 0, z, r(33) * 6, 0.6 + r(36) * 0.4);
+  }
+}
+
+/** Vulkan: dunkles Gestein mit gluehenden Rissen und Glutbrocken. */
+function placeVolcano(out: Placement[], tx: number, tz: number, r: Rand, at: At) {
+  if (r(1) < 0.06) {
+    const [x, z] = at(2);
+    const s = 0.6 + r(4) * 0.8;
+    put(out, tx, tz, T.boulder, shade(DECO.basaltRock, r(5)), x, 0, z, r(6) * 6, s, s * (0.5 + r(7) * 0.6), s);
+  }
+  if (r(8) < 0.1) {
+    // Glutriss: flache, leuchtende Splitter in einer Reihe.
+    const a = r(9) * Math.PI;
+    const [x, z] = at(10);
+    for (let k = 0; k < 3; k++) {
+      const o = (k - 1) * 0.12;
+      put(out, tx, tz, T.shard, DECO.ember, x + Math.cos(a) * o, 0.0, z + Math.sin(a) * o, a, 1.4, 0.25, 0.6, 0, 0, true);
+    }
+  }
+  if (r(20) < 0.15) {
+    const [x, z] = at(23);
+    put(out, tx, tz, T.pebble, shade(DECO.basaltRock, r(24)), x, 0.01, z, r(25) * 6, 0.8 + r(26) * 0.8, 0.6);
+  }
+}
+
 
 // ------------------------------------------------------------ Zusammenfuegen
 

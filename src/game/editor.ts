@@ -25,6 +25,8 @@ export class Editor {
   tool: Tool = "hand";
   rotation: Dir = 0;
   selectedId: number | null = null;
+  /** Angetipptes freies Rohstofffeld (Reinheit, Biom). */
+  inspected: { x: number; y: number } | null = null;
   /** Neue Montierer uebernehmen das zuletzt gewaehlte Rezept. */
   assemblerRecipe: Recipe | null = null;
   /** Warum der letzte Bauversuch scheiterte (Hinweis in der UI). */
@@ -50,7 +52,10 @@ export class Editor {
   setTool(tool: Tool) {
     if (tool !== "hand" && tool !== "delete" && !this.world.isUnlocked(tool)) return;
     this.tool = tool;
-    if (tool !== "hand") this.selectedId = null;
+    if (tool !== "hand") {
+      this.selectedId = null;
+      this.inspected = null;
+    }
     this.emit();
   }
 
@@ -62,11 +67,13 @@ export class Editor {
   /** Antippen mit der Hand: Gebaeude auswaehlen bzw. Auswahl aufheben. */
   select(x: number, y: number) {
     this.selectedId = this.world.entityAt(x, y)?.id ?? null;
+    this.inspected = this.selectedId === null && this.world.gen.oreAt(x, y) && !this.world.gen.obstacleAt(x, y) ? { x, y } : null;
     this.emit();
   }
 
   clearSelection() {
     this.selectedId = null;
+    this.inspected = null;
     this.emit();
   }
 
