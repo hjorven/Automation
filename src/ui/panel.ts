@@ -1,6 +1,7 @@
 import type { Editor } from "../game/editor";
 import { Extractor, Generator, Machine, Storage, type Entity } from "../sim/entities";
-import { TICKS_PER_SECOND } from "../sim/constants";
+import { EXTRACT_TICKS, TICKS_PER_SECOND } from "../sim/constants";
+import { BIOME_NAMES, PURITY_NAMES, PURITY_RATE } from "../sim/terrain";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import { ACCUMULATOR, MAX_TIER, SOLAR_POWER, TIERS, buildCost, powerUse } from "../sim/progression";
 import { sunlight } from "../sim/daycycle";
@@ -30,8 +31,12 @@ export class Panel {
 
   render() {
     const e = this.editor.selected;
-    this.el.hidden = !e;
-    if (!e) return;
+    const tile = this.editor.inspected;
+    this.el.hidden = !e && !tile;
+    if (!e) {
+      if (tile) this.el.innerHTML = this.tileBody(tile.x, tile.y);
+      return;
+    }
     const w = this.editor.world;
 
     const thumb = this.thumbs[e.type];
@@ -114,10 +119,31 @@ export class Panel {
   private describe(e: Entity): string {
     if (e instanceof Extractor) {
       const speed = e.type === "extractor_mk2" ? ", doppelt so schnell" : e.type === "extractor_mk3" ? ", viermal so schnell" : "";
-      return `Fördert ${itemLabel(e.ore)}${speed}.`;
+      const purity = e.purity === "pure" ? " Reines Vorkommen: doppeltes Tempo." : e.purity === "impure" ? " Unreines Vorkommen: halbes Tempo." : "";
+      return `Fördert ${itemLabel(e.ore)}${speed}.${purity}`;
     }
     if (e.type === "tunnel") return `${e.exit ? "Ausgang" : "Eingang"}. ${TOOL_INFO.tunnel}`;
     return TOOL_INFO[e.type] ?? "";
+  }
+
+  /** Freies Rohstofffeld: Erz, Reinheit und Biom, damit sich Suchen lohnt. */
+  private tileBody(x: number, y: number): string {
+    const gen = this.editor.world.gen;
+    const ore = gen.oreAt(x, y);
+    if (!ore) return "";
+    const purity = gen.purityAt(x, y);
+    const cls = purity === "pure" ? "ok" : purity === "impure" ? "bad" : "";
+    const perMin = (60 * TICKS_PER_SECOND * PURITY_RATE[purity]) / EXTRACT_TICKS;
+    const biome = gen.version === 1 ? "" : `Biom: <b>${BIOME_NAMES[gen.biomeAt(x, y)]}</b>. `;
+    const tool = ore === "crude_oil" ? "Eine Ölpumpe" : "Ein Bohrer";
+    return (
+      `<div class="p-head"><span class="ph"></span><div><div class="p-title">${itemName(ore)}</div>` +
+      `<div><span class="pill ${cls}">Vorkommen ${PURITY_NAMES[purity]}</span></div></div>` +
+      `<button class="p-close" data-action="close" aria-label="Schließen">&#x2715;</button></div>` +
+      `<div class="p-text">${biome}${tool} fördert hier ${fmt(perMin)} pro Minute.` +
+      (purity === "normal" ? "" : purity === "pure" ? " Reine Vorkommen fördern doppelt so schnell." : " Unreine Vorkommen fördern nur halb so schnell.") +
+      `</div>`
+    );
   }
 
   private hubBody(): string {

@@ -5,13 +5,14 @@ import { ACCUMULATOR, MAX_TIER } from "./progression";
 import { recipeById } from "./recipes";
 import { RESEARCH } from "./research";
 import type { Order } from "./orders";
+import { worldGen } from "./terrain";
 import { World } from "./world";
 
 /**
  * Versioniertes Spielstand-Format. Bei Aenderungen SAVE_VERSION erhoehen und
  * in `migrate` einen Schritt von der alten auf die neue Version ergaenzen.
  */
-export const SAVE_VERSION = 4;
+export const SAVE_VERSION = 5;
 
 type Stacks = [ItemId, number][];
 
@@ -73,6 +74,8 @@ export interface SaveData {
   orders?: Order[];
   orderSeq?: number;
   ordersDone?: number;
+  /** Weltgenerator (seit v5): 1 = alte Welt ohne Biome, 2 = Biome. */
+  gen: number;
   entities: SavedEntity[];
 }
 
@@ -83,6 +86,7 @@ export function serialize(world: World): SaveData {
     savedAt: Date.now(),
     tick: world.tick,
     tier: world.tier,
+    gen: world.gen.version,
     storage: [...world.storage],
     delivered: [...world.delivered],
     research: [...world.research],
@@ -147,6 +151,7 @@ function saveEntity(e: Entity): SavedEntity {
 export function deserialize(raw: unknown): World {
   const data = migrate(raw);
   const w = new World();
+  w.gen = worldGen(data.gen);
   w.tick = data.tick;
   w.tier = Math.min(MAX_TIER, Math.max(0, Math.floor(num(data.tier))));
   for (const [item, n] of data.storage) {
@@ -276,10 +281,16 @@ function migrate(raw: unknown): SaveData {
     data.research = RESEARCH.filter((n) => n.legacyTier !== undefined && n.legacyTier <= tier).map((n) => n.id);
     data.version = 4;
   }
+  if (data.version === 4) {
+    // v4 -> v5: Biome. Alte Welten behalten ihren Generator, damit jeder Bohrer
+    // auf seinem Erz bleibt.
+    data.gen = 1;
+    data.version = 5;
+  }
   if (!Array.isArray(data.entities) || !Array.isArray(data.storage)) {
     throw new Error("Spielstand ist unvollständig");
   }
-  return { savedAt: 0, tick: 0, ...data } as SaveData;
+  return { savedAt: 0, tick: 0, gen: 2, ...data } as SaveData;
 }
 
 const ITEMS = new Set<string>(ITEM_ORDER);

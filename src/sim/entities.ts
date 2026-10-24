@@ -3,7 +3,7 @@ import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "./dir";
 import type { ItemId } from "./items";
 import { GENERATORS } from "./progression";
 import { smeltingRecipeFor, type MachineKind, type Recipe } from "./recipes";
-import type { OreId } from "./terrain";
+import { PURITY_RATE, type OreId, type Purity } from "./terrain";
 
 /** Was ein Gebaeude von der Welt braucht (vermeidet zyklische Imports). */
 export interface Host {
@@ -154,15 +154,18 @@ export class Extractor extends EntityBase {
     dir: Dir,
     readonly ore: OreId,
     readonly type: ExtractorKind = "extractor",
+    readonly purity: Purity = "normal",
   ) {
     super(id, x, y, dir);
   }
 
-  /** Mk2 foerdert doppelt, Mk3 viermal so schnell; die Oelpumpe wie ein Bohrer. */
+  /**
+   * Mk2 foerdert doppelt, Mk3 viermal so schnell; die Oelpumpe wie ein Bohrer.
+   * Reine Vorkommen verdoppeln das Tempo, unreine halbieren es.
+   */
   get interval(): number {
-    if (this.type === "extractor_mk2") return EXTRACT_TICKS / 2;
-    if (this.type === "extractor_mk3") return EXTRACT_TICKS / 4;
-    return EXTRACT_TICKS;
+    const k = this.type === "extractor_mk2" ? 2 : this.type === "extractor_mk3" ? 4 : 1;
+    return EXTRACT_TICKS / k / PURITY_RATE[this.purity];
   }
 
   accept(): boolean {

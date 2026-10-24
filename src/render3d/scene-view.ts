@@ -211,6 +211,7 @@ export class SceneView {
   private followCamera(world: World, rig: CameraRig, t: number) {
     const tg = rig.target;
     const d = rig.distance;
+    this.terrain.setGen(world.gen);
     // Reicht bis knapp ueber den Bildrand, auch wenn die Kamera gedreht ist.
     this.terrain.update(tg.x, tg.z, Math.min(56, d * 0.85 + 8));
     this.env.update(tg, d, world.tick / TICKS_PER_SECOND, t, world.tier);
