@@ -24,3 +24,4 @@ export {
   sorterModel,
   storageModel,
 } from "./production";
+export { accumulatorModel, solarModel } from "./power";

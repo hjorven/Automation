@@ -1,7 +1,7 @@
 import type { Dir } from "./dir";
 import { Generator, Storage, type Belt, type Entity, type EntityType } from "./entities";
 import { ITEM_ORDER, type ItemId } from "./items";
-import { MAX_TIER } from "./progression";
+import { ACCUMULATOR, MAX_TIER } from "./progression";
 import { recipeById } from "./recipes";
 import { RESEARCH } from "./research";
 import type { Order } from "./orders";
@@ -42,6 +42,8 @@ export interface SavedEntity {
   /** Kraftwerk */
   fuel?: number;
   burnLeft?: number;
+  /** Batteriespeicher: Ladung in MJ */
+  stored?: number;
   /** Tunnel */
   exit?: boolean;
   transit?: [ItemId, number][];
@@ -113,6 +115,10 @@ function saveEntity(e: Entity): SavedEntity {
     case "generator_coal":
     case "generator_fuel":
       return { ...base, fuel: e.fuel, burnLeft: e.burnLeft };
+    case "accumulator":
+      return { ...base, stored: e.stored };
+    case "solar":
+      return base;
     case "splitter":
       return { ...base, buffer: e.buffer, next: e.next };
     case "merger":
@@ -195,6 +201,11 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
     case "generator_fuel":
       e.fuel = Math.min(Generator.FUEL_CAPACITY, Math.max(0, Math.floor(num(s.fuel))));
       e.burnLeft = Math.max(0, num(s.burnLeft));
+      break;
+    case "accumulator":
+      e.stored = Math.min(ACCUMULATOR.capacity, Math.max(0, num(s.stored)));
+      break;
+    case "solar":
       break;
     case "splitter":
       e.buffer = item(s.buffer);
@@ -291,6 +302,8 @@ const TYPES = new Set<string>([
   "tunnel",
   "storage",
   "sorter",
+  "solar",
+  "accumulator",
 ]);
 const isType = (v: unknown): v is EntityType => typeof v === "string" && TYPES.has(v);
 const isItem = (v: unknown): v is ItemId => typeof v === "string" && ITEMS.has(v);

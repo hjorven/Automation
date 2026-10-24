@@ -1,12 +1,16 @@
 import { DX, DY, opposite, rotateCCW, rotateCW, tileKey, type Dir } from "./dir";
 import { TUNNEL_RANGE } from "./constants";
+import { TICKS_PER_SECOND } from "./constants";
+import { isNight, sunlight } from "./daycycle";
 import {
+  Accumulator,
   Belt,
   Extractor,
   Generator,
   Hub,
   Machine,
   Merger,
+  Solar,
   Sorter,
   Splitter,
   Storage,
@@ -17,8 +21,11 @@ import {
 } from "./entities";
 import type { ItemId } from "./items";
 import {
+  ACCUMULATOR,
   BELT_LEVEL,
   HUB_POWER,
+  NIGHT_DEMAND,
+  SOLAR_POWER,
   MAX_TIER,
   POWER_TIER,
   TIERS,
@@ -71,8 +78,13 @@ export class World implements Host {
   /** Erledigte Auftraege. */
   ordersDone = 0;
 
-  /** Strom in MW, jeden Tick neu berechnet. `factor` bremst Verbraucher bei Mangel. */
-  readonly power = { supply: 0, demand: 0, factor: 1 };
+  /**
+   * Strom in MW, jeden Tick neu berechnet. `factor` bremst Verbraucher bei Mangel.
+   * `supply` ist die Erzeugung (Hub, Sonne, brennende Kraftwerke), `battery` die
+   * Leistung der Speicher (positiv = sie entladen, negativ = sie laden),
+   * `stored`/`capacity` ihr Fuellstand in MJ.
+   */
+  readonly power = { supply: 0, demand: 0, factor: 1, solar: 0, battery: 0, stored: 0, capacity: 0, night: false };
   powerFactor = 1;
   powerLoad = 0;
 
@@ -354,6 +366,12 @@ export class World implements Host {
       case "generator_fuel":
         e = new Generator(id, x, y, dir, type);
         break;
+      case "solar":
+        e = new Solar(id, x, y, dir);
+        break;
+      case "accumulator":
+        e = new Accumulator(id, x, y, dir);
+        break;
       case "tunnel": {
         const t = new Tunnel(id, x, y, dir);
         t.exit = this.tunnelWantsExit(x, y, dir);
@@ -413,23 +431,80 @@ export class World implements Host {
     for (const e of this.entities.values()) e.update(this);
   }
 
-  /** Strombilanz aus dem Stand vor diesem Tick; setzt Leistungsfaktor und Auslastung. */
+  /**
+   * Strombilanz aus dem Stand vor diesem Tick; setzt Leistungsfaktor und Auslastung.
+   * Reihenfolge: Hub und Sonne zuerst, dann Kraftwerke, zuletzt die Speicher.
+   * Ueberschuss (auch aus Kraftwerken) laedt die Speicher.
+   */
   private updatePower() {
     let demand = 0;
-    let supply = 0;
+    let fixed = 0;
+    let solar = 0;
+    let gen = 0;
     let hub = false;
+    const batteries: Accumulator[] = [];
     for (const e of this.entities.values()) {
       demand += powerUse(e.type);
-      if (e instanceof Generator && e.burning) supply += e.spec.power;
+      if (e instanceof Generator) {
+        if (e.burning) gen += e.spec.power;
+      } else if (e instanceof Solar) solar += SOLAR_POWER;
+      else if (e instanceof Accumulator) batteries.push(e);
       else if (e.type === "hub") hub = true;
     }
-    if (hub) supply += HUB_POWER + this.bonus.hubPower;
     const p = this.power;
+    p.night = isNight(this.tick);
+    if (p.night) demand *= NIGHT_DEMAND;
+    solar *= sunlight(this.tick);
+    if (hub) fixed += HUB_POWER + this.bonus.hubPower;
+    const renewable = fixed + solar;
+
     p.demand = demand;
-    p.supply = supply;
-    p.factor = !this.powerActive || demand <= supply ? 1 : supply / demand;
+    p.supply = renewable + gen;
+    p.solar = solar;
+    p.capacity = batteries.length * ACCUMULATOR.capacity;
+    p.battery = 0;
+    if (!this.powerActive) {
+      p.factor = 1;
+      p.stored = batteries.reduce((n, b) => n + b.stored, 0);
+      this.powerFactor = 1;
+      this.powerLoad = 0;
+      return;
+    }
+
+    const dt = 1 / TICKS_PER_SECOND;
+    // Was die Speicher in diesem Tick hoechstens aufnehmen bzw. abgeben koennen (MW).
+    let room = 0;
+    let avail = 0;
+    for (const b of batteries) {
+      room += Math.min(ACCUMULATOR.rate, (ACCUMULATOR.capacity - b.stored) / dt);
+      avail += Math.min(ACCUMULATOR.rate, b.stored / dt);
+    }
+    const need = demand - renewable;
+    // Kraftwerke decken den Rest und laden mit, was die Speicher noch fassen.
+    const genUsed = Math.min(gen, Math.max(0, need) + room);
+    const surplus = renewable + genUsed - demand;
+    if (surplus >= 0) {
+      p.battery = -Math.min(surplus, room);
+      p.factor = 1;
+    } else {
+      p.battery = Math.min(-surplus, avail);
+      p.factor = demand > 0 ? (renewable + genUsed + p.battery) / demand : 1;
+      if (p.factor > 1 - 1e-9) p.factor = 1;
+    }
+    this.share(batteries, p.battery * dt, p.battery > 0 ? avail : room);
+    p.stored = batteries.reduce((n, b) => n + b.stored, 0);
     this.powerFactor = p.factor;
-    this.powerLoad = !this.powerActive ? 0 : supply > 0 ? Math.min(1, demand / supply) : 0;
+    this.powerLoad = gen > 0 ? genUsed / gen : 0;
+  }
+
+  /** Energie (MJ, positiv = entnehmen) anteilig nach Lade-/Entladeleistung auf die Speicher verteilen. */
+  private share(batteries: Accumulator[], energy: number, total: number) {
+    if (!energy || total <= 0) return;
+    const dt = 1 / TICKS_PER_SECOND;
+    for (const b of batteries) {
+      const limit = energy > 0 ? Math.min(ACCUMULATOR.rate, b.stored / dt) : Math.min(ACCUMULATOR.rate, (ACCUMULATOR.capacity - b.stored) / dt);
+      b.stored = Math.min(ACCUMULATOR.capacity, Math.max(0, b.stored - (energy * limit) / total));
+    }
   }
 
   /**

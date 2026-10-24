@@ -2,7 +2,8 @@ import type { Editor } from "../game/editor";
 import { Extractor, Generator, Machine, Storage, type Entity } from "../sim/entities";
 import { TICKS_PER_SECOND } from "../sim/constants";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
-import { MAX_TIER, TIERS, buildCost, powerUse } from "../sim/progression";
+import { ACCUMULATOR, MAX_TIER, SOLAR_POWER, TIERS, buildCost, powerUse } from "../sim/progression";
+import { sunlight } from "../sim/daycycle";
 import { recipeById, recipesFor } from "../sim/recipes";
 import { TOOL_INFO, toolName } from "./catalog";
 import { byId, costChips, dot, fmt, itemLabel, itemName, recipeHtml, stackChips } from "./dom";
@@ -222,6 +223,17 @@ function status(e: Entity, w: Editor["world"]): Status {
       return e.buffer !== null ? { text: "In Betrieb", cls: "ok" } : { text: "Leer", cls: "" };
     case "hub":
       return { text: `Stufe ${w.tier}`, cls: "ok" };
+    case "solar": {
+      const mw = SOLAR_POWER * sunlight(w.tick);
+      return mw > 0 ? { text: `${fmt(mw)} MW`, cls: "ok" } : { text: "Nacht: kein Strom", cls: "warn" };
+    }
+    case "accumulator": {
+      const b = w.power.battery;
+      if (!w.powerActive) return { text: "Ab Stufe Energie aktiv", cls: "" };
+      if (b > 0.01) return { text: "Entlädt", cls: "warn" };
+      if (b < -0.01) return { text: "Lädt", cls: "ok" };
+      return e.stored >= ACCUMULATOR.capacity - 1e-6 ? { text: "Voll", cls: "ok" } : e.stored > 0 ? { text: "Bereit", cls: "" } : { text: "Leer", cls: "warn" };
+    }
     default:
       return { text: "", cls: "" };
   }
@@ -263,6 +275,18 @@ function liveBody(e: Entity, w: Editor["world"]): string {
         bar((100 * e.queue.length) / Storage.CAPACITY)
       );
     }
+    case "solar":
+      return (
+        `<div class="io"><span class="caps">Sonne</span><span class="num">${fmt(100 * sunlight(w.tick))} %</span>` +
+        `<span class="caps">Spitze</span><span class="num">${SOLAR_POWER} MW</span></div>` +
+        bar(100 * sunlight(w.tick))
+      );
+    case "accumulator":
+      return (
+        `<div class="io"><span class="caps">Ladung</span><span class="num">${fmt(e.stored)}/${ACCUMULATOR.capacity} MJ</span>` +
+        `<span class="caps">Leistung</span><span class="num">bis ${ACCUMULATOR.rate} MW</span></div>` +
+        bar((100 * e.stored) / ACCUMULATOR.capacity)
+      );
     case "belt":
       return `<div class="io"><span class="caps">Stufe</span><span>Mk${e.level}, ${fmt(2 * (e.level === 3 ? 4 : e.level))} Felder/s</span></div>`;
     default:

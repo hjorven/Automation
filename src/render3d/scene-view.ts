@@ -14,6 +14,8 @@ import {
   type BufferGeometry,
 } from "three";
 import { BELT_SPEED, TICKS_PER_SECOND } from "../sim/constants";
+import { dayPhase, sunAngle } from "../sim/daycycle";
+import { ACCUMULATOR } from "../sim/progression";
 import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "../sim/dir";
 import { Storage, type Belt, type BeltItem, type Entity } from "../sim/entities";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
@@ -22,6 +24,7 @@ import type { CameraRig } from "./camera-rig";
 import {
   BELT_TOP,
   HUB_PAD_Y,
+  accumulatorModel,
   assemblerModel,
   createBeltTexture,
   curveBedGeometry,
@@ -42,6 +45,7 @@ import {
   pumpModel,
   refineryModel,
   smelterModel,
+  solarModel,
   sorterModel,
   splitterModel,
   storageModel,
@@ -309,6 +313,9 @@ export class SceneView {
   }
 
   private animate(world: World, t: number, dt: number) {
+    // Solarflaechen folgen der Sonne von Ost nach West und liegen nachts flach.
+    const sun = sunAngle(dayPhase(world.tick));
+    const tilt = sun < Math.PI ? 0.6 * Math.cos(sun) : 0;
     for (const [id, node] of this.nodes) {
       const e = world.entities.get(id);
       if (!e) continue;
@@ -411,6 +418,20 @@ export class SceneView {
           node.spin += (target - node.spin) * Math.min(1, dt * 4);
           root.getObjectByName("arm")!.rotation.y += node.spin * dt;
           spinIcon(root, t, id, 0.92);
+          break;
+        }
+        case "solar": {
+          const panel = root.getObjectByName("panel")!;
+          panel.rotation.z += (tilt - panel.rotation.z) * Math.min(1, dt * 2);
+          break;
+        }
+        case "accumulator": {
+          const k = e.stored / ACCUMULATOR.capacity;
+          root.getObjectByName("fill")!.scale.y = Math.max(0.02, k);
+          // Lampe pulsiert beim Laden/Entladen, sonst ruhig.
+          const p = world.power;
+          const busy = Math.abs(p.battery) > 0.01;
+          node.own[0].emissiveIntensity = busy ? 1.1 + 0.6 * Math.sin(t * (p.battery > 0 ? 9 : 4) + id) : 0.35;
           break;
         }
         case "hub": {
@@ -567,6 +588,10 @@ function buildTemplate(e: Exclude<Entity, Belt>): Group {
       return refineryModel();
     case "manufacturer":
       return manufacturerModel();
+    case "solar":
+      return solarModel();
+    case "accumulator":
+      return accumulatorModel();
     default:
       // Neue Gebaeude, bis es eigene Modelle gibt.
       return placeholderModel();

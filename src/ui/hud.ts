@@ -1,6 +1,6 @@
 import type { Editor } from "../game/editor";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
-import { MAX_TIER, TIERS, buildCost } from "../sim/progression";
+import { MAX_TIER, NIGHT_DEMAND, TIERS, buildCost } from "../sim/progression";
 import { toolName } from "./catalog";
 import { byId, costChips, dot, fmt, itemName } from "./dom";
 import type { OverviewTab } from "./overview";
@@ -67,7 +67,7 @@ export class Hud {
     if (w.powerActive) {
       html +=
         `<div class="power" data-power><span class="caps">Strom</span><div class="bar"><div class="fill"></div></div>` +
-        `<span class="num"></span><span class="power-note" hidden></span></div>`;
+        `<span class="num"></span><span class="power-sub"></span><span class="power-note" hidden></span></div>`;
     }
 
     const tool = this.editor.tool;
@@ -122,6 +122,15 @@ export class Hud {
       power.classList.toggle("low", low);
       power.querySelector<HTMLElement>(".fill")!.style.width = `${p.supply > 0 ? Math.min(100, (100 * p.demand) / p.supply) : 100}%`;
       power.querySelector(".num")!.textContent = `${fmt(p.demand)}/${fmt(p.supply)} MW`;
+      // Tageszeit, Sonne und Speicher: die Nacht braucht mehr Strom und liefert keinen Solarstrom.
+      let sub = p.night ? `Nacht: +${fmt(100 * (NIGHT_DEMAND - 1))} % Bedarf` : "Tag";
+      if (p.solar > 0) sub += ` · Sonne ${fmt(p.solar)} MW`;
+      if (p.capacity > 0) {
+        sub += ` · Speicher ${fmt((100 * p.stored) / p.capacity)} %`;
+        if (p.battery > 0.01) sub += ` (−${fmt(p.battery)} MW)`;
+        else if (p.battery < -0.01) sub += ` (+${fmt(-p.battery)} MW)`;
+      }
+      power.querySelector(".power-sub")!.textContent = sub;
       const note = power.querySelector<HTMLElement>(".power-note")!;
       note.hidden = !low;
       if (low) note.textContent = `Zu wenig Strom: Maschinen laufen mit ${fmt(100 * p.factor)} %`;

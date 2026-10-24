@@ -32,7 +32,9 @@ export type EntityType =
   | "merger"
   | "tunnel"
   | "storage"
-  | "sorter";
+  | "sorter"
+  | "solar"
+  | "accumulator";
 
 abstract class EntityBase {
   abstract readonly type: EntityType;
@@ -499,10 +501,53 @@ export class Generator extends EntityBase {
   }
 }
 
+/** Solarfeld: liefert tagsueber Strom, nachts nichts (siehe World.updatePower). */
+export class Solar extends EntityBase {
+  readonly type = "solar";
+
+  accept(): boolean {
+    return false;
+  }
+
+  outputsTo(): boolean {
+    return false;
+  }
+}
+
+/**
+ * Batteriespeicher: nimmt Ueberschuss auf und gibt ihn bei Mangel wieder ab.
+ * Geladen und entladen wird zentral in World.updatePower.
+ */
+export class Accumulator extends EntityBase {
+  readonly type = "accumulator";
+  /** Gespeicherte Energie in MJ (MW mal Sekunden). */
+  stored = 0;
+
+  accept(): boolean {
+    return false;
+  }
+
+  outputsTo(): boolean {
+    return false;
+  }
+}
+
 /** Mindestabstand zweier Items im Tunnel, wie auf dem Band. */
 const TUNNEL_GAP = Math.ceil(ITEM_SPACING / BELT_SPEED);
 
-export type Entity = Belt | Extractor | Machine | Hub | Splitter | Merger | Tunnel | Storage | Sorter | Generator;
+export type Entity =
+  | Belt
+  | Extractor
+  | Machine
+  | Hub
+  | Splitter
+  | Merger
+  | Tunnel
+  | Storage
+  | Sorter
+  | Generator
+  | Solar
+  | Accumulator;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

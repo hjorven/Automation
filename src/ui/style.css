@@ -351,6 +351,12 @@ button.danger {
   grid-column: 1 / -1;
   font-weight: 600;
 }
+#hud .power-sub {
+  grid-column: 1 / -1;
+  margin-top: -4px;
+  opacity: 0.75;
+  font-size: 11px;
+}
 #hud .foot {
   display: flex;
   gap: 6px;
