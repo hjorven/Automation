@@ -141,6 +141,11 @@ export const PALETTE = {
   waterPumpBlade: 0xffc94a,
   boiler: 0x8a3a2a,
 
+  // Drohnenhafen und Drohne (models/drones.ts).
+  dronePad: 0x4a5260,
+  drone: 0xe0e6ec,
+  droneDark: 0x2f7f8f,
+
   // Bruecken und Rampen (models/levels.ts).
   bridgePillar: 0x8a96a6,
   bridgeBeam: 0xd9a63a,

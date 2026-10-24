@@ -235,6 +235,13 @@ export class Editor {
     this.emit();
   }
 
+  /** Zielhafen des ausgewaehlten Drohnenhafens setzen (null = sendet nicht). */
+  setSelectedTarget(to: { x: number; y: number } | null) {
+    const e = this.selected;
+    if (e?.type === "drone_port" && (!to || to.x !== e.x || to.y !== e.y)) e.target = to;
+    this.emit();
+  }
+
   toggleSelectedRamp() {
     const e = this.selected;
     if (e?.type === "ramp") this.world.toggleRamp(e);

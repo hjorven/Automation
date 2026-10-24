@@ -24,6 +24,7 @@ import {
   type EntityType,
   type Host,
 } from "./entities";
+import { DronePort } from "./drones";
 import { FluidCarrier, FluidSystem } from "./fluids";
 import type { ItemId } from "./items";
 import {
@@ -557,6 +558,14 @@ export class World implements Host {
         const t = new Tunnel(id, x, y, dir);
         t.exit = this.tunnelWantsExit(x, y, dir);
         e = t;
+        break;
+      }
+      case "drone_port": {
+        // Ein Hafen ohne Ziel schickt kuenftig hierher (bequemes Verbinden beim Bauen).
+        const p = new DronePort(id, x, y, dir);
+        const open = [...this.entities.values()].find((o) => o instanceof DronePort && !o.target) as DronePort | undefined;
+        if (open) open.target = { x, y };
+        e = p;
         break;
       }
       case "ramp": {

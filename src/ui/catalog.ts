@@ -37,6 +37,7 @@ export const TOOL_NAMES: Partial<Record<string, string>> = {
   radar: "Radarturm",
   wreck: "Wrack",
   bridge: "Hochband",
+  drone_port: "Drohnenhafen",
   ramp: "Rampe",
   pipe: "Rohr",
   pipe_pump: "Rohrpumpe",
@@ -57,6 +58,7 @@ const SHORT_NAMES: Partial<Record<string, string>> = {
   manufacturer: "Fert.-Anlage",
   fluid_tank: "Tank",
   generator_steam: "Dampf-KW",
+  drone_port: "Drohnen",
 };
 
 export const TOOL_INFO: Partial<Record<string, string>> = {
@@ -88,6 +90,7 @@ export const TOOL_INFO: Partial<Record<string, string>> = {
   manufacturer: "Große Fertigung für Rezepte mit bis zu vier Zutaten.",
   wreck: "Abgestürzte Frachtkapsel. Bergen bringt seltene Teile ins Hub-Lager, manchmal auch ein alternatives Rezept.",
   radar: "Lichtet den Nebel in weitem Umkreis. Gebäude erkunden sonst nur ihre direkte Umgebung.",
+  drone_port: "Sammelt Items von Bändern, die Drohne fliegt je 30 zum Zielhafen. Ein neuer Hafen wird Ziel des letzten offenen Hafens.",
   bridge: "Band auf Stelzen über allem, auch über Wasser. Läuft so schnell wie dein schnellstes Band. Mit Rampen verbinden.",
   ramp: "Führt ein Band auf die Brücke hinauf oder hinunter. Zeigt von selbst nach unten, wenn ein Hochband ankommt.",
   pipe: "Leitet Wasser, Rohöl und Treibstoff. Verbindet sich mit allen Nachbarn, Maschinen ziehen sich, was sie brauchen.",
@@ -130,6 +133,7 @@ const GROUP_OF: Partial<Record<string, ToolGroup>> = {
   merger: "transport",
   tunnel: "transport",
   bridge: "transport",
+  drone_port: "transport",
   ramp: "transport",
   extractor: "mining",
   extractor_mk2: "mining",

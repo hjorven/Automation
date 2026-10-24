@@ -18,6 +18,9 @@ import {
   BRIDGE_Y,
   bridgeSupportGeometry,
   createBeltTexture,
+  droneModel,
+  dronePortModel,
+  DRONE_PAD_Y,
   extractorMk2Model,
   extractorMk3Model,
   extractorModel,
@@ -120,6 +123,7 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["turret", turretModel],
     ["bridge", () => bridgeModel(beltTex)],
     ["ramp", () => rampModel(true)],
+    ["drone_port", () => portWithDrone()],
     ["pipe", () => pipeModel(0b0011)],
     ["pipe_pump", () => pipePumpModel(0b0101)],
     ["fluid_tank", () => fluidTankModel(0b0001)],
@@ -167,5 +171,14 @@ function bridgeModel(tex: ReturnType<typeof createBeltTexture>): Group {
   belt.position.y = BRIDGE_Y;
   g.add(belt);
   g.position.y = -0.35;
+  return g;
+}
+
+/** Drohnenhafen mit geparkter Drohne. */
+function portWithDrone(): Group {
+  const g = dronePortModel();
+  const d = droneModel();
+  d.position.y = DRONE_PAD_Y + 0.2;
+  g.add(d);
   return g;
 }

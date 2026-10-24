@@ -212,6 +212,16 @@ export const RESEARCH: readonly ResearchNode[] = [
     recipes: [],
   },
   {
+    id: "drones",
+    name: "Drohnenpost",
+    text: "Drohnenhäfen fliegen Ladungen zwischen Außenposten",
+    tier: 6,
+    requires: ["bridges"],
+    cost: [s("motor", 40), s("control_unit", 40), s("steel", 100)],
+    buildings: ["drone_port"],
+    recipes: [],
+  },
+  {
     id: "rotor_motor",
     name: "Rotormotor",
     tier: 6,

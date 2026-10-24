@@ -1,5 +1,6 @@
 import type { Dir } from "./dir";
 import { Generator, Storage, type Conveyor, type Entity, type EntityType } from "./entities";
+import { DronePort } from "./drones";
 import { ITEM_ORDER, type ItemId } from "./items";
 import { CREATURE_HP, NEST_HP, nestSites } from "./hazards";
 import { ACCUMULATOR, MAX_TIER } from "./progression";
@@ -31,6 +32,15 @@ export interface SavedEntity {
   dir: Dir;
   /** Ebene (nur gespeichert, wenn 1 = Bruecke) */
   layer?: number;
+  /** Drohnenhafen */
+  target?: [number, number] | null;
+  outbox?: ItemId[];
+  inbox?: ItemId[];
+  state?: string;
+  flight?: number;
+  duration?: number;
+  cargo?: ItemId[];
+  waited?: number;
   /** Rampe: hinauf (true) oder hinunter */
   up?: boolean;
   /** Belt, Rampe */
@@ -198,6 +208,18 @@ function saveEntity(e: Entity): SavedEntity {
   const base: SavedEntity = { type: e.type, x: e.x, y: e.y, dir: e.dir };
   if (e.layer) base.layer = e.layer;
   switch (e.type) {
+    case "drone_port":
+      return {
+        ...base,
+        target: e.target ? [e.target.x, e.target.y] : null,
+        outbox: [...e.outbox],
+        inbox: [...e.inbox],
+        state: e.state,
+        flight: e.flight,
+        duration: e.duration,
+        cargo: [...e.cargo],
+        waited: e.waited,
+      };
     case "ramp":
       return { ...base, up: e.up, items: e.items.map((i) => ({ item: i.item, progress: i.progress, entry: i.entry })) };
     case "belt":
@@ -315,6 +337,19 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
       e.level = s.level === 2 || s.level === 3 ? s.level : 1;
       restoreBelt(e, s.items ?? [], tick);
       break;
+    case "drone_port": {
+      const t = s.target;
+      e.target = Array.isArray(t) && Number.isInteger(t[0]) && Number.isInteger(t[1]) ? { x: t[0], y: t[1] } : null;
+      const items = (l: unknown) => (Array.isArray(l) ? l.filter(isItem) : []);
+      e.outbox = items(s.outbox).slice(0, DronePort.CAPACITY);
+      e.inbox = items(s.inbox).slice(0, DronePort.CAPACITY);
+      e.cargo = items(s.cargo);
+      e.state = s.state === "out" || s.state === "back" ? s.state : "idle";
+      e.flight = Math.max(0, num(s.flight));
+      e.duration = Math.max(0, num(s.duration));
+      e.waited = Math.max(0, num(s.waited));
+      break;
+    }
     case "ramp":
       e.up = s.up !== false;
       restoreBelt(e, s.items ?? [], tick);
@@ -461,6 +496,7 @@ const TYPES = new Set<string>([
   "merger",
   "tunnel",
   "ramp",
+  "drone_port",
   "storage",
   "sorter",
   "solar",

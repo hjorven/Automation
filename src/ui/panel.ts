@@ -2,6 +2,7 @@ import type { Editor } from "../game/editor";
 import { Extractor, Generator, Machine, Storage, type Entity } from "../sim/entities";
 import { EXTRACT_TICKS, TICKS_PER_SECOND } from "../sim/constants";
 import { BIOME_NAMES, PURITY_NAMES, PURITY_RATE } from "../sim/terrain";
+import { DRONE_CARGO, DronePort } from "../sim/drones";
 import { FluidCarrier, PIPE_REACH } from "../sim/fluids";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import { ACCUMULATOR, MAX_TIER, SOLAR_POWER, TIERS, buildCost, powerUse } from "../sim/progression";
@@ -79,6 +80,7 @@ export class Panel {
           (loot.recipe ? `<div class="p-text">Dazu ein Bauplan: <b>${recipeById(loot.recipe)?.name ?? loot.recipe}</b></div>` : "") +
           `</div>`;
       }
+      if (e.type === "drone_port") html += this.targetPicker(e);
       html += `<div class="section" data-live></div>`;
     }
 
@@ -190,6 +192,28 @@ export class Panel {
   }
 
   /** Item-Auswahl fuer den Sortierer: erst bekannte Items, der Rest ausgegraut. */
+  /** Zielhafen waehlen: andere Haefen nach Entfernung. */
+  private targetPicker(e: DronePort): string {
+    const ports = [...this.editor.world.entities.values()]
+      .filter((o): o is DronePort => o instanceof DronePort && o !== e)
+      .map((o) => ({ o, d: Math.hypot(o.x - e.x, o.y - e.y) }))
+      .sort((a, b) => a.d - b.d);
+    const isTarget = (o: DronePort) => e.target?.x === o.x && e.target?.y === o.y;
+    return (
+      `<div class="section"><div class="caps">Ziel</div><div class="filter-grid">` +
+      `<button data-target="" class="${e.target ? "" : "active"}">Keins</button>` +
+      ports
+        .map(
+          ({ o, d }) =>
+            `<button data-target="${o.x},${o.y}" class="${isTarget(o) ? "active" : ""}" title="Hafen bei ${o.x}, ${o.y}">` +
+            `<span>${o.x}, ${o.y} · ${fmt(d)} Felder</span></button>`,
+        )
+        .join("") +
+      (ports.length ? "" : `<div class="p-text">Baue einen zweiten Hafen als Ziel.</div>`) +
+      `</div></div>`
+    );
+  }
+
   private filterPicker(current: ItemId | null): string {
     const w = this.editor.world;
     const known = (i: ItemId) => w.storage.has(i) || w.delivered.has(i);
@@ -213,7 +237,10 @@ export class Panel {
     if (!btn) return;
     const ed = this.editor;
     if (btn.dataset.recipe) ed.setSelectedRecipe(recipeById(btn.dataset.recipe) ?? null);
-    else if (btn.dataset.filter !== undefined) ed.setSelectedFilter((btn.dataset.filter || null) as ItemId | null);
+    else if (btn.dataset.target !== undefined) {
+      const [x, y] = btn.dataset.target.split(",").map(Number);
+      ed.setSelectedTarget(btn.dataset.target ? { x, y } : null);
+    } else if (btn.dataset.filter !== undefined) ed.setSelectedFilter((btn.dataset.filter || null) as ItemId | null);
     else if (btn.dataset.action === "rotate") ed.rotateSelected();
     else if (btn.dataset.action === "delete") ed.deleteSelected();
     else if (btn.dataset.action === "salvage") ed.salvageSelected();
@@ -252,6 +279,12 @@ function status(e: Entity, w: Editor["world"]): Status {
   if (e instanceof Extractor) {
     if (e.buffer !== null) return { text: "Ausgang blockiert", cls: "bad" };
     return slow ? { text: "Zu wenig Strom", cls: "warn" } : { text: "Fördert", cls: "ok" };
+  }
+  if (e instanceof DronePort) {
+    if (!e.targetPort(w)) return { text: "Kein Ziel", cls: "warn" };
+    if (e.state === "out") return { text: "Drohne liefert", cls: "ok" };
+    if (e.state === "back") return { text: "Drohne kehrt zurück", cls: "ok" };
+    return e.outbox.length ? { text: "Belädt", cls: "ok" } : { text: "Bereit", cls: "" };
   }
   if (e instanceof FluidCarrier) {
     const net = e.net;
@@ -323,6 +356,22 @@ function liveBodyOf(e: Entity, w: Editor["world"]): string {
     const pct = e.buffer !== null ? 100 : (100 * e.timer) / e.interval;
     const perMin = (60 * TICKS_PER_SECOND) / e.interval;
     return `<div class="io"><span class="caps">Rate</span><span class="num">${fmt(perMin)} / min</span>${power}</div>` + bar(pct);
+  }
+  if (e instanceof DronePort) {
+    const count = (l: ItemId[]) => {
+      const m = new Map<ItemId, number>();
+      for (const i of l) m.set(i, (m.get(i) ?? 0) + 1);
+      return m;
+    };
+    const to = e.targetPort(w);
+    const trip = to ? `${fmt((2 * DronePort.travelTicks(e, to)) / TICKS_PER_SECOND)} s hin und zurück` : "–";
+    const pct = e.state === "idle" ? (100 * Math.min(e.outbox.length, DRONE_CARGO)) / DRONE_CARGO : (100 * e.flight) / Math.max(1, e.duration);
+    return (
+      `<div class="io"><span class="caps">Zum Versand</span><span class="chips">${stackChips(count(e.outbox))}<span class="num">${e.outbox.length}/${DronePort.CAPACITY}</span></span>` +
+      `<span class="caps">Angekommen</span><span class="chips">${stackChips(count(e.inbox))}</span>` +
+      `<span class="caps">Flug</span><span>${DRONE_CARGO} Items, ${trip}</span>${power}</div>` +
+      bar(pct)
+    );
   }
   if (e instanceof FluidCarrier) {
     const net = e.net;

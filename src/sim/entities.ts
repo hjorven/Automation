@@ -4,6 +4,7 @@ import type { ItemId } from "./items";
 import { GENERATORS } from "./progression";
 import { smeltingRecipeFor, type MachineKind, type Recipe } from "./recipes";
 import { PURITY_RATE, type Purity } from "./terrain";
+import type { DronePort } from "./drones";
 import type { FluidCarrier, PipeKind } from "./fluids";
 
 /** Was ein Gebaeude von der Welt braucht (vermeidet zyklische Imports). */
@@ -44,6 +45,7 @@ export type EntityType =
   | "wreck"
   | "turret"
   | "ramp"
+  | "drone_port"
   | PipeKind;
 
 export abstract class EntityBase {
@@ -678,7 +680,8 @@ export type Entity =
   | Radar
   | Wreck
   | Turret
-  | FluidCarrier;
+  | FluidCarrier
+  | DronePort;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

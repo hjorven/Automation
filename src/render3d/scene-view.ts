@@ -18,6 +18,7 @@ import { dayPhase, sunAngle } from "../sim/daycycle";
 import { ACCUMULATOR } from "../sim/progression";
 import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "../sim/dir";
 import { Storage, type Belt, type BeltItem, type Conveyor, type Entity, type Ramp } from "../sim/entities";
+import type { DronePort } from "../sim/drones";
 import { FluidCarrier, PIPE_FLOW, pipeConnections } from "../sim/fluids";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import type { World } from "../sim/world";
@@ -25,6 +26,7 @@ import type { CameraRig } from "./camera-rig";
 import {
   BELT_TOP,
   BRIDGE_Y,
+  DRONE_PAD_Y,
   HUB_PAD_Y,
   accumulatorModel,
   assemblerModel,
@@ -32,6 +34,8 @@ import {
   createBeltTexture,
   curveBedGeometry,
   curveFrameGeometry,
+  droneModel,
+  dronePortModel,
   extractorMk2Model,
   extractorMk3Model,
   extractorModel,
@@ -88,6 +92,8 @@ interface EntityNode {
   spin: number;
   /** Laufender Winkel fuer Pumpe und Kolben. */
   phase: number;
+  /** Frei fliegendes Teil in Weltkoordinaten (Lieferdrohne). */
+  drone?: Object3D;
 }
 
 /** Waechst bei Bedarf; zeichnet nur die ersten `count` Instanzen. */
@@ -142,6 +148,7 @@ export class SceneView {
   private readonly hazards = new HazardsView();
   private readonly nodes = new Map<number, EntityNode>();
   private readonly templates = new Map<string, Group>();
+  private droneTemplate: Group | null = null;
   private worldVersion = -1;
   /** Hub-Stufe beim letzten Bild; steigt sie, startet der Flieger. */
   private lastTier = -1;
@@ -331,13 +338,21 @@ export class SceneView {
     root.position.set(e.x + 0.5, 0, e.y + 0.5);
     root.rotation.y = yawOf(e.dir);
     this.entitiesGroup.add(root);
-    return { root, key: nodeKey(e, world), own, spin: 0, phase: 0 };
+    const node: EntityNode = { root, key: nodeKey(e, world), own, spin: 0, phase: 0 };
+    if (e.type === "drone_port") {
+      if (!this.droneTemplate) this.droneTemplate = droneModel();
+      node.drone = this.droneTemplate.clone();
+      node.drone.scale.setScalar(DRONE_SCALE);
+      this.entitiesGroup.add(node.drone);
+    }
+    return node;
   }
 
   private removeNode(id: number) {
     const node = this.nodes.get(id);
     if (!node) return;
     this.entitiesGroup.remove(node.root);
+    if (node.drone) this.entitiesGroup.remove(node.drone);
     for (const m of node.own) m.dispose();
     this.nodes.delete(id);
   }
@@ -373,6 +388,14 @@ export class SceneView {
           node.phase += node.spin * dt;
           root.getObjectByName("beam")!.rotation.z = Math.sin(node.phase) * 0.26;
           root.getObjectByName("crank")!.rotation.z = -node.phase;
+          break;
+        }
+        case "drone_port": {
+          const away = e.state !== "idle";
+          node.spin += ((away ? 40 : e.outbox.length ? 6 : 0) - node.spin) * Math.min(1, dt * 3);
+          flyPortDrone(node.drone!, e, node.spin * dt, t, id);
+          // Landelicht blinkt, solange die Drohne unterwegs ist.
+          node.own[0].emissiveIntensity = away ? (Math.sin(t * 8 + id) > 0 ? 2 : 0.2) : 0.6;
           break;
         }
         case "water_pump": {
@@ -615,6 +638,42 @@ function flyDrone(root: Object3D, s: number, t: number): number {
   return thrust;
 }
 
+/** Drohne etwas groesser als im Modell, damit man sie im Flug erkennt. */
+const DRONE_SCALE = 1.4;
+/** Hoehe der Drohne auf dem Landeplatz (Kiste steht auf der Plattform). */
+const DRONE_REST = DRONE_PAD_Y + 0.2 * DRONE_SCALE;
+/** Reiseflughoehe ueber dem Landeplatz. */
+const DRONE_CRUISE = 3;
+
+/**
+ * Lieferdrohne eines Hafens: steht auf dem Landeplatz oder fliegt im Bogen
+ * zwischen Heimat- und Zielhafen (senkrecht starten, reisen, senkrecht landen).
+ */
+function flyPortDrone(drone: Object3D, e: DronePort, spin: number, t: number, id: number) {
+  const home = { x: e.x + 0.5, z: e.y + 0.5 };
+  const away = e.target ? { x: e.target.x + 0.5, z: e.target.y + 0.5 } : home;
+  for (const c of drone.children) if (c.name === "rotor") c.rotation.y += spin;
+  drone.getObjectByName("cargo")!.visible = e.state === "out" || (e.state === "idle" && e.outbox.length > 0);
+  if (e.state === "idle") {
+    drone.position.set(home.x, DRONE_REST + (spin > 1 ? 0.02 * Math.sin(t * 20 + id) : 0), home.z);
+    return;
+  }
+  const [from, to] = e.state === "out" ? [home, away] : [away, home];
+  const u = e.duration ? Math.min(1, e.flight / e.duration) : 1;
+  // Steigen in den ersten 15 %, Sinken in den letzten 15 %, dazwischen reisen.
+  const climb = Math.min(1, u / 0.15, (1 - u) / 0.15);
+  const travel = Math.min(1, Math.max(0, (u - 0.1) / 0.8));
+  const s = travel * travel * (3 - 2 * travel);
+  drone.position.set(
+    from.x + (to.x - from.x) * s,
+    DRONE_REST + DRONE_CRUISE * Math.sin((climb * Math.PI) / 2) + 0.05 * Math.sin(t * 3 + id),
+    from.z + (to.z - from.z) * s,
+  );
+  if (to.x !== from.x || to.z !== from.z) drone.rotation.y = Math.atan2(-(to.z - from.z), to.x - from.x);
+  // Leicht nach vorne geneigt, solange sie reist.
+  drone.rotation.z = -0.25 * Math.sin(Math.PI * travel);
+}
+
 /** Modelle zeigen nach +x; Sim-Richtung `dir` als Drehung um die Hochachse. */
 const yawOf = (d: Dir) => (-d * Math.PI) / 2;
 
@@ -648,6 +707,8 @@ function buildTemplate(e: Exclude<Entity, Belt>, mask: number): Group {
   switch (e.type) {
     case "ramp":
       return rampModel(e.up);
+    case "drone_port":
+      return dronePortModel();
     case "pipe":
       return pipeModel(mask);
     case "pipe_pump":
