@@ -1,0 +1,188 @@
+{
+ "version": 3,
+ "savedAt": 1792789378790,
+ "tick": 200,
+ "tier": 11,
+ "storage": [
+  [
+   "iron_plate",
+   123
+  ]
+ ],
+ "delivered": [],
+ "entities": [
+  {
+   "type": "hub",
+   "x": 0,
+   "y": 0,
+   "dir": 0
+  },
+  {
+   "type": "belt",
+   "x": -3,
+   "y": -3,
+   "dir": 0,
+   "level": 1,
+   "items": []
+  },
+  {
+   "type": "extractor",
+   "x": 0,
+   "y": 8,
+   "dir": 0,
+   "timer": 6.394884621840902e-14,
+   "buffer": "coal"
+  },
+  {
+   "type": "smelter",
+   "x": -3,
+   "y": 3,
+   "dir": 0,
+   "recipe": null,
+   "input": [],
+   "output": [],
+   "progress": 0,
+   "crafting": false
+  },
+  {
+   "type": "assembler",
+   "x": -2,
+   "y": -3,
+   "dir": 0,
+   "recipe": null,
+   "input": [],
+   "output": [],
+   "progress": 0,
+   "crafting": false
+  },
+  {
+   "type": "splitter",
+   "x": -2,
+   "y": 3,
+   "dir": 0,
+   "buffer": null,
+   "next": 0
+  },
+  {
+   "type": "merger",
+   "x": -1,
+   "y": -3,
+   "dir": 0,
+   "buffer": null
+  },
+  {
+   "type": "tunnel",
+   "x": -1,
+   "y": 3,
+   "dir": 0,
+   "exit": false,
+   "buffer": null,
+   "transit": []
+  },
+  {
+   "type": "storage",
+   "x": 0,
+   "y": -3,
+   "dir": 0,
+   "queue": []
+  },
+  {
+   "type": "generator_coal",
+   "x": 0,
+   "y": 3,
+   "dir": 0,
+   "fuel": 0,
+   "burnLeft": 0
+  },
+  {
+   "type": "sorter",
+   "x": 1,
+   "y": -3,
+   "dir": 0,
+   "filter": null,
+   "buffer": null,
+   "next": 0
+  },
+  {
+   "type": "foundry",
+   "x": 1,
+   "y": 3,
+   "dir": 0,
+   "recipe": null,
+   "input": [],
+   "output": [],
+   "progress": 0,
+   "crafting": false
+  },
+  {
+   "type": "belt",
+   "x": 2,
+   "y": -3,
+   "dir": 0,
+   "level": 2,
+   "items": []
+  },
+  {
+   "type": "extractor_mk2",
+   "x": 1,
+   "y": 8,
+   "dir": 0,
+   "timer": 0.3703703703703667,
+   "buffer": "coal"
+  },
+  {
+   "type": "manufacturer",
+   "x": 2,
+   "y": 3,
+   "dir": 0,
+   "recipe": null,
+   "input": [],
+   "output": [],
+   "progress": 0,
+   "crafting": false
+  },
+  {
+   "type": "pump",
+   "x": -38,
+   "y": 38,
+   "dir": 0,
+   "timer": 6.394884621840902e-14,
+   "buffer": "crude_oil"
+  },
+  {
+   "type": "refinery",
+   "x": 3,
+   "y": -3,
+   "dir": 0,
+   "recipe": null,
+   "input": [],
+   "output": [],
+   "progress": 0,
+   "crafting": false
+  },
+  {
+   "type": "generator_fuel",
+   "x": 3,
+   "y": 3,
+   "dir": 0,
+   "fuel": 0,
+   "burnLeft": 0
+  },
+  {
+   "type": "belt",
+   "x": -4,
+   "y": -4,
+   "dir": 0,
+   "level": 3,
+   "items": []
+  },
+  {
+   "type": "extractor_mk3",
+   "x": 2,
+   "y": 8,
+   "dir": 0,
+   "timer": 0.37037037037036846,
+   "buffer": "coal"
+  }
+ ]
+}
