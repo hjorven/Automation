@@ -9,7 +9,7 @@ const FIXTURES = import.meta.glob<string>("./fixtures/save-v*.json", { query: "?
 
 describe("Integration: alte Spielstaende", () => {
   it("es gibt eine Fixture fuer jede Version ab v3", () => {
-    const versions = Object.keys(FIXTURES).map((p) => Number(p.match(/save-v(\d+)\.json$/)![1]));
+    const versions = Object.keys(FIXTURES).map((p) => Number(p.match(/save-v(\d+)[^/]*\.json$/)![1]));
     for (let v = 3; v <= SAVE_VERSION; v++) expect(versions, `fixtures/save-v${v}.json fehlt`).toContain(v);
   });
 
@@ -28,7 +28,9 @@ describe("Integration: alte Spielstaende", () => {
 
     it(`${name}: alles Gebaute bleibt nach der Migration baubar`, () => {
       const w = deserialize(JSON.parse(text));
-      const locked = [...w.entities.values()].map(buildIdOf).filter((id) => id !== "hub" && !w.isUnlocked(id));
+      // Hub und Wracks gehoeren zur Welt und sind nicht baubar.
+      const world = new Set<string>(["hub", "wreck"]);
+      const locked = [...w.entities.values()].map(buildIdOf).filter((id) => !world.has(id) && !w.isUnlocked(id));
       expect(locked).toEqual([]);
     });
 
