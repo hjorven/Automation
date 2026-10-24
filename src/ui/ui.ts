@@ -49,6 +49,8 @@ export class Ui {
   private tier: number;
   private errorAt = 0;
   private storageVersion = -1;
+  /** Stand der Angriffe beim letzten Blick (fuer Meldungen). */
+  private hazardSeen: { waves: number; destroyed: number; cleared: number };
   /** Letzte Fingerposition auf dem Spielfeld (fuer Hinweise am Finger). */
   private pointer = { x: window.innerWidth / 2, y: window.innerHeight / 2 };
 
@@ -74,6 +76,8 @@ export class Ui {
     this.blueprintBar = new BlueprintBar(editor, library, () => this.openOverview("blueprints"), (text, kind) =>
       this.toasts.show(text, kind),
     );
+    const h = editor.world.hazards;
+    this.hazardSeen = { waves: h.waves, destroyed: h.destroyed, cleared: h.nestsCleared };
 
     window.addEventListener("keydown", this.onKey);
     const track = (e: PointerEvent) => {
@@ -109,11 +113,29 @@ export class Ui {
       this.storageVersion = w.storageVersion;
       this.toolbar.refresh();
     }
+    this.hazardToasts();
     this.hud.update();
     this.blueprintBar.update();
     this.panel.update();
     this.overview.update();
     this.tutorial.update();
+  }
+
+  /** Meldungen zu Angriffen, Verlusten und zerstoerten Nestern. */
+  private hazardToasts() {
+    const h = this.editor.world.hazards;
+    const seen = this.hazardSeen;
+    if (h.waves > seen.waves && h.lastWave) {
+      const { x, y } = h.lastWave;
+      const dir = compass(x, y);
+      this.toasts.show(`Angriff! Kreaturen kommen aus dem ${dir}`, "bad", 5000);
+    }
+    if (h.destroyed > seen.destroyed) {
+      const n = h.destroyed - seen.destroyed;
+      this.toasts.show(n === 1 ? "Ein Gebäude wurde zerstört" : `${n} Gebäude wurden zerstört`, "bad", 4000);
+    }
+    if (h.nestsCleared > seen.cleared) this.toasts.show("Nest zerstört", "ok", 3500);
+    this.hazardSeen = { waves: h.waves, destroyed: h.destroyed, cleared: h.nestsCleared };
   }
 
   private onEditorChange() {
@@ -192,4 +214,11 @@ export class Ui {
       }
     }
   };
+}
+
+/** Himmelsrichtung vom Hub aus (Bildschirm-y zeigt nach Sueden). */
+function compass(x: number, y: number): string {
+  const names = ["Osten", "Südosten", "Süden", "Südwesten", "Westen", "Nordwesten", "Norden", "Nordosten"];
+  const i = Math.round(Math.atan2(y, x) / (Math.PI / 4));
+  return names[(i + 8) % 8];
 }

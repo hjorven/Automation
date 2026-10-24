@@ -253,6 +253,11 @@ function status(e: Entity, w: Editor["world"]): Status {
       const mw = SOLAR_POWER * sunlight(w.tick);
       return mw > 0 ? { text: `${fmt(mw)} MW`, cls: "ok" } : { text: "Nacht: kein Strom", cls: "warn" };
     }
+    case "turret": {
+      if (w.peaceful) return { text: "Friedlicher Modus", cls: "" };
+      if (w.tick - e.lastShot < 20) return { text: "Feuert", cls: "warn" };
+      return { text: "Wache", cls: "ok" };
+    }
     case "accumulator": {
       const b = w.power.battery;
       if (!w.powerActive) return { text: "Ab Stufe Energie aktiv", cls: "" };
@@ -266,6 +271,12 @@ function status(e: Entity, w: Editor["world"]): Status {
 }
 
 function liveBody(e: Entity, w: Editor["world"]): string {
+  const dmg = w.hazards.damage.get(e.id) ?? 0;
+  const hurt = dmg > 0 ? `<div class="io"><span class="caps">Schaden</span><span class="num">${fmt((100 * dmg) / w.hazards.maxHp(e))} %, repariert sich</span></div>` : "";
+  return hurt + liveBodyOf(e, w);
+}
+
+function liveBodyOf(e: Entity, w: Editor["world"]): string {
   const bar = (pct: number) => `<div class="bar work"><div class="fill" style="width:${pct}%;transition:none"></div></div>`;
   const use = w.powerActive ? powerUse(e.type) : 0;
   const power = use ? `<span class="caps">Strom</span><span class="num">${use} MW</span>` : "";
