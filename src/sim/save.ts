@@ -80,6 +80,8 @@ export interface SaveData {
   gen: number;
   /** Erkundete Nebel-Zellen als flache Liste [x0, y0, x1, y1, ...]; fehlt sie, zaehlt die Umgebung der Gebaeude. */
   explored?: number[];
+  /** Geborgene Wracks. */
+  salvaged?: number;
   /** Endlos-Upgrades: Id und Stufe (optional, fehlt in aelteren Staenden). */
   upgrades?: [string, number][];
   /** Bester Fabrikwert pro Minute (optional). */
@@ -112,6 +114,7 @@ export function serialize(world: World): SaveData {
     tier: world.tier,
     gen: world.gen.version,
     explored: [...world.explored].flatMap(cellOf),
+    salvaged: world.salvaged,
     storage: [...world.storage],
     delivered: [...world.delivered],
     research: [...world.research],
@@ -228,6 +231,7 @@ function saveEntity(e: Entity): SavedEntity {
       };
     case "hub":
     case "radar":
+    case "wreck":
       return base;
   }
 }
@@ -237,7 +241,10 @@ export function deserialize(raw: unknown): World {
   const data = migrate(raw);
   const w = new World();
   w.gen = worldGen(data.gen);
-  w.fog = true;
+  // Erst alle Gebaeude setzen, dann Wracks im neu Gelichteten: sonst koennte
+  // ein Wrack das Feld eines alten Gebaeudes besetzen.
+  w.fog = false;
+  w.salvaged = Math.max(0, Math.floor(num(data.salvaged)));
   w.tick = data.tick;
   w.tier = Math.min(MAX_TIER, Math.max(0, Math.floor(num(data.tier))));
   for (const [item, n] of data.storage) {
@@ -260,6 +267,7 @@ export function deserialize(raw: unknown): World {
   for (let i = 0; i + 1 < cells.length; i += 2) {
     if (Number.isInteger(cells[i]) && Number.isInteger(cells[i + 1])) w.explored.add(cellKey(cells[i], cells[i + 1]));
   }
+  const savedCells = [...w.explored];
   for (const [id, level] of Array.isArray(data.upgrades) ? data.upgrades : []) {
     if (upgradeById(id)) w.setUpgradeLevel(id as UpgradeId, Math.max(0, Math.floor(num(level))));
   }
@@ -275,6 +283,9 @@ export function deserialize(raw: unknown): World {
   // Alte Spielstaende kennen keine Kreaturen: friedlich weiterspielen, im Menue umschaltbar.
   w.peaceful = data.peaceful ?? true;
   restoreHazards(w, data.hazards);
+  const before = new Set(savedCells);
+  w.fog = true;
+  w.spawnWrecks([...w.explored].filter((k) => !before.has(k)));
   return w;
 }
 
@@ -336,6 +347,7 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
       break;
     case "hub":
     case "radar":
+    case "wreck":
       break;
   }
 }
@@ -415,6 +427,7 @@ const TYPES = new Set<string>([
   "solar",
   "accumulator",
   "radar",
+  "wreck",
   "turret",
 ]);
 const isType = (v: unknown): v is EntityType => typeof v === "string" && TYPES.has(v);

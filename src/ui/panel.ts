@@ -66,10 +66,22 @@ export class Panel {
         html += `<div class="section"><div class="caps">Rezept</div><div class="recipe-card">${recipeHtml(e.recipe)}</div></div>`;
       }
       if (e.type === "sorter") html += this.filterPicker(e.filter);
+      const loot = w.wreckLoot(e);
+      if (loot) {
+        html +=
+          `<div class="section"><div class="caps">Inhalt</div><div class="unlocks">${costChips(loot.items)}</div>` +
+          (loot.recipe ? `<div class="p-text">Dazu ein Bauplan: <b>${recipeById(loot.recipe)?.name ?? loot.recipe}</b></div>` : "") +
+          `</div>`;
+      }
       html += `<div class="section" data-live></div>`;
     }
 
     const mk2 = e.type === "extractor" && w.isUnlocked("extractor_mk2");
+    if (e.type === "wreck") {
+      this.el.innerHTML = html + `<div class="actions"><button data-action="salvage" class="primary">Bergen</button></div>`;
+      this.update();
+      return;
+    }
     html +=
       `<div class="actions">` +
       (e.type !== "hub" ? `<button data-action="rotate">Drehen</button>` : "") +
@@ -195,6 +207,7 @@ export class Panel {
     else if (btn.dataset.filter !== undefined) ed.setSelectedFilter((btn.dataset.filter || null) as ItemId | null);
     else if (btn.dataset.action === "rotate") ed.rotateSelected();
     else if (btn.dataset.action === "delete") ed.deleteSelected();
+    else if (btn.dataset.action === "salvage") ed.salvageSelected();
     else if (btn.dataset.action === "close") ed.clearSelection();
     else if (btn.dataset.action === "upgrade") ed.upgradeHub();
     else if (btn.dataset.action === "toggle-tunnel") ed.toggleSelectedTunnel();

@@ -29,6 +29,7 @@ import {
   mergerModel,
   pumpModel,
   radarModel,
+  wreckModel,
   refineryModel,
   smelterModel,
   solarModel,
@@ -106,6 +107,7 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["solar", solarModel],
     ["accumulator", accumulatorModel],
     ["radar", radarModel],
+    ["wreck", wreckModel],
     ["turret", turretModel],
   ];
   for (const [type, build] of builders) {

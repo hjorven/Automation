@@ -25,5 +25,5 @@ export {
   storageModel,
 } from "./production";
 export { accumulatorModel, solarModel } from "./power";
-export { radarModel } from "./explore";
+export { radarModel, wreckModel } from "./explore";
 export { creatureModel, nestModel, turretModel } from "./hazards";

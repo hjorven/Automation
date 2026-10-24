@@ -53,7 +53,8 @@ export function capture(world: World, rect: Rect, name = "Blaupause"): Blueprint
   let maxX = -Infinity;
   let maxY = -Infinity;
   for (const e of world.entities.values()) {
-    if (e.x < r.x0 || e.x > r.x1 || e.y < r.y0 || e.y > r.y1 || e.type === "hub") continue;
+    // Hub und Wracks gehoeren nicht in eine Blaupause.
+    if (e.x < r.x0 || e.x > r.x1 || e.y < r.y0 || e.y > r.y1 || e.type === "hub" || e.type === "wreck") continue;
     const entry: BlueprintEntry = { id: buildIdOf(e), dx: e.x, dy: e.y, dir: e.dir };
     if (e instanceof Machine && e.recipe && e.type !== "smelter") entry.recipe = e.recipe.id;
     if (e instanceof Sorter && e.filter) entry.filter = e.filter;

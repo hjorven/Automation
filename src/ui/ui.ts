@@ -48,6 +48,7 @@ export class Ui {
   private pasteAt = 0;
   private tier: number;
   private errorAt = 0;
+  private salvageAt = 0;
   private storageVersion = -1;
   /** Stand der Angriffe beim letzten Blick (fuer Meldungen). */
   private hazardSeen: { waves: number; destroyed: number; cleared: number };
@@ -143,6 +144,13 @@ export class Ui {
     if (err && err.at !== this.errorAt) {
       this.errorAt = err.at;
       this.toasts.float(ERROR_TEXT[err.error] ?? "Geht hier nicht", this.pointer.x, this.pointer.y);
+    }
+    const sal = this.editor.lastSalvage;
+    if (sal && sal.at !== this.salvageAt) {
+      this.salvageAt = sal.at;
+      const parts = sal.loot.items.map((s) => `${s.count} ${ITEM_NAMES[s.item]}`);
+      if (sal.loot.recipe) parts.push(`Bauplan "${recipeById(sal.loot.recipe)?.name ?? sal.loot.recipe}"`);
+      this.toasts.show(`Geborgen: ${parts.join(", ")}`, "ok", 4500);
     }
     const last = this.editor.bp.last;
     if (last && last.at !== this.pasteAt) {

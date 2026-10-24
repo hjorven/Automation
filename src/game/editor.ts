@@ -3,6 +3,7 @@ import { Machine, type Entity } from "../sim/entities";
 import type { ItemId } from "../sim/items";
 import { BELT_LEVEL, type BuildId } from "../sim/progression";
 import type { Recipe } from "../sim/recipes";
+import type { WreckLoot } from "../sim/wrecks";
 import type { UpgradeId } from "../sim/upgrades";
 import {
   BLUEPRINT_TIER,
@@ -59,6 +60,8 @@ export class Editor {
   assemblerRecipe: Recipe | null = null;
   /** Warum der letzte Bauversuch scheiterte (Hinweis in der UI). */
   lastError: { error: BuildError; at: number } | null = null;
+  /** Zuletzt geborgenes Wrack (Meldung in der UI). */
+  lastSalvage: { loot: WreckLoot; at: number } | null = null;
 
   readonly bp: BlueprintState = { mode: "select", rect: null, clip: null, at: null, last: null };
 
@@ -201,6 +204,15 @@ export class Editor {
     this.emit();
   }
 
+  /** Ausgewaehltes Wrack bergen; die Beute meldet die UI. */
+  salvageSelected() {
+    const e = this.selected;
+    const loot = e && this.world.salvage(e);
+    if (loot) this.lastSalvage = { loot, at: performance.now() };
+    this.selectedId = null;
+    this.emit();
+  }
+
   deleteSelected() {
     const e = this.selected;
     if (e) this.world.demolish(e.x, e.y);
@@ -295,6 +307,14 @@ export class Editor {
     if (tool === "hand" || tool === "blueprint") return;
 
     if (tool === "delete") {
+      const wreck = w.entityAt(x, y);
+      if (wreck?.type === "wreck") {
+        const loot = w.salvage(wreck);
+        if (loot) this.lastSalvage = { loot, at: performance.now() };
+        if (wreck.id === this.selectedId) this.selectedId = null;
+        this.emit();
+        return;
+      }
       const e = w.demolish(x, y);
       if (e && e.id === this.selectedId) this.selectedId = null;
       return;

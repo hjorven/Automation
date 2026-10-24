@@ -309,12 +309,13 @@ export function emissionOf(e: Entity, world: World): number {
   return base;
 }
 
-/** Ziel einer Kreatur: das naechste Gebaeude, das Smog macht, sonst das naechste ueberhaupt (nie der Hub). */
+/** Ziel einer Kreatur: das naechste Gebaeude, das Smog macht, sonst das naechste ueberhaupt (nie Hub oder Wrack). */
 function nearestTarget(world: World, x: number, y: number): Entity | undefined {
   let best: Entity | undefined;
   let bestD = Infinity;
   for (const e of world.entities.values()) {
-    if (e.type === "hub") continue;
+    // Hub und Wracks greifen sie nicht an.
+    if (e.type === "hub" || e.type === "wreck") continue;
     // Bevorzugt Verschmutzer und Tuerme: Baender zaehlen erst ab doppelter Entfernung.
     const weight = POLLUTION[e.type] || e.type === "turret" ? 1 : 2;
     const d = Math.hypot(e.x + 0.5 - x, e.y + 0.5 - y) * weight;
