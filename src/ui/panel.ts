@@ -22,7 +22,7 @@ export class Panel {
     private readonly editor: Editor,
     private readonly thumbs: Thumbs,
     private readonly unlocksHtml: (tier: number) => string,
-    private readonly onOverview: () => void,
+    private readonly onOverview: (tab?: "tiers" | "research" | "orders") => void,
   ) {
     this.el.addEventListener("click", this.onClick);
   }
@@ -69,7 +69,10 @@ export class Panel {
       (e.type !== "hub" ? `<button data-action="rotate">Drehen</button>` : "") +
       (e.type === "tunnel" ? `<button data-action="toggle-tunnel">${e.exit ? "Zum Eingang" : "Zum Ausgang"}</button>` : "") +
       (mk2 ? `<button data-action="mk2">Auf Mk2 aufrüsten</button>` : "") +
-      (e.type === "hub" ? `<button data-action="overview">Alle Stufen</button>` : "") +
+      (e.type === "hub"
+        ? `<button data-action="overview">Alle Stufen</button><button data-action="research">Forschung</button>` +
+          `<button data-action="orders">Aufträge</button>`
+        : "") +
       `<button data-action="delete" class="danger">Abreißen</button></div>`;
     if (mk2) html += `<div class="p-text" style="margin-top:6px">Mk2: ${costChips(buildCost("extractor_mk2"), w.storage)}</div>`;
 
@@ -169,7 +172,9 @@ export class Panel {
     else if (btn.dataset.action === "upgrade") ed.upgradeHub();
     else if (btn.dataset.action === "toggle-tunnel") ed.toggleSelectedTunnel();
     else if (btn.dataset.action === "mk2") ed.upgradeSelectedExtractor();
-    else if (btn.dataset.action === "overview") this.onOverview();
+    else if (btn.dataset.action === "overview") this.onOverview("tiers");
+    else if (btn.dataset.action === "research") this.onOverview("research");
+    else if (btn.dataset.action === "orders") this.onOverview("orders");
   };
 }
 

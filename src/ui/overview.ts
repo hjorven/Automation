@@ -1,15 +1,19 @@
 import type { Editor } from "../game/editor";
 import { ITEM_ORDER } from "../sim/items";
-import { TIERS } from "../sim/progression";
+import { MAX_TIER, TIERS } from "../sim/progression";
+import { recipeById } from "../sim/recipes";
+import { RESEARCH, researchById, type ResearchNode } from "../sim/research";
 import { toolName } from "./catalog";
-import { byId, costChips, dot, fmt, itemName } from "./dom";
+import { byId, costChips, dot, fmt, itemName, recipeHtml } from "./dom";
 import { tierTrack } from "./panel";
 import { BUCKETS, type DeliveryStats } from "./stats";
 
-export type OverviewTab = "tiers" | "inventory" | "stats";
+export type OverviewTab = "tiers" | "research" | "orders" | "inventory" | "stats";
 
 const TABS: { id: OverviewTab; label: string }[] = [
   { id: "tiers", label: "Stufen" },
+  { id: "research", label: "Forschung" },
+  { id: "orders", label: "Aufträge" },
   { id: "inventory", label: "Lager" },
   { id: "stats", label: "Statistik" },
 ];
@@ -25,6 +29,7 @@ export class Overview {
     private readonly editor: Editor,
     private readonly stats: DeliveryStats,
     private readonly unlocksHtml: (tier: number) => string,
+    private readonly contentHtml: (buildings: readonly string[], recipes: readonly string[]) => string,
   ) {
     this.el.addEventListener("click", this.onClick);
     this.scrim.addEventListener("click", () => this.close());
@@ -63,7 +68,16 @@ export class Overview {
     if (key === this.bodyKey) return;
     this.bodyKey = key;
     const scroll = body.scrollTop;
-    body.innerHTML = this.tab === "tiers" ? this.tiersHtml() : this.tab === "inventory" ? this.inventoryHtml() : this.statsHtml();
+    body.innerHTML =
+      this.tab === "tiers"
+        ? this.tiersHtml()
+        : this.tab === "research"
+          ? this.researchHtml()
+          : this.tab === "orders"
+            ? this.ordersHtml()
+            : this.tab === "inventory"
+              ? this.inventoryHtml()
+              : this.statsHtml();
     body.scrollTop = scroll;
   }
 
@@ -94,6 +108,77 @@ export class Overview {
         html += `<button class="primary upgrade" data-action="upgrade"${w.canAfford(t.cost) ? "" : " disabled"}>Upgrade kaufen</button>`;
       }
       html += `</div>`;
+    });
+    return html + `</div>`;
+  }
+
+  /** Forschungsbaum nach Stufen; zwei Stufen voraus sichtbar, der Rest als Ausblick. */
+  private researchHtml(): string {
+    const w = this.editor.world;
+    const done = RESEARCH.filter((n) => w.research.has(n.id)).length;
+    let html =
+      `<div class="muted" style="margin-bottom:10px;font-size:13px">Frei wählbar: Was du zuerst erforschst, entscheidest du. ` +
+      `Neue Knoten kommen mit jeder Hub-Stufe dazu. Erforscht: ${done}/${RESEARCH.length}.</div>`;
+    const horizon = Math.min(MAX_TIER, w.tier + 2);
+    for (let t = 0; t <= horizon; t++) {
+      const nodes = RESEARCH.filter((n) => n.tier === t);
+      if (!nodes.length) continue;
+      html += `<div class="caps r-tier${t > w.tier ? " later" : ""}">Ab Stufe ${t}: ${TIERS[t].name}</div><div class="r-grid">`;
+      html += nodes.map((n) => this.nodeHtml(n)).join("");
+      html += `</div>`;
+    }
+    const later = RESEARCH.filter((n) => n.tier > horizon).length;
+    if (later) html += `<div class="empty-note">${later} weitere Knoten in späteren Stufen.</div>`;
+    return html;
+  }
+
+  private nodeHtml(n: ResearchNode): string {
+    const w = this.editor.world;
+    const err = w.researchError(n.id);
+    const missing = n.requires.filter((r) => !w.research.has(r)).map((r) => researchById(r)?.name ?? r);
+    const state =
+      err === "done"
+        ? `<span class="pill ok">erforscht</span>`
+        : err === "tier"
+          ? `<span class="pill">ab Stufe ${n.tier}</span>`
+          : err === "requires"
+            ? `<span class="pill warn">braucht ${missing.join(", ")}</span>`
+            : `<span class="pill ok">verfügbar</span>`;
+    const recipes = n.recipes
+      .map((id) => recipeById(id))
+      .filter((r) => !!r)
+      .map((r) => `<div class="recipe-card">${recipeHtml(r)}</div>`)
+      .join("");
+    let html = `<div class="r-node ${err === "done" ? "done" : err === null || err === "cost" ? "open" : "locked"}">`;
+    html += `<div class="r-name">${n.name}${state}</div>`;
+    if (n.text) html += `<div class="muted">${n.text}</div>`;
+    if (n.buildings.length) html += `<div class="row">${this.contentHtml(n.buildings, [])}</div>`;
+    html += recipes;
+    if (err !== "done") {
+      html += `<div class="row">${costChips(n.cost, w.storage)}</div>`;
+      if (err === null || err === "cost") {
+        html += `<button class="primary" data-research="${n.id}"${err ? " disabled" : ""}>Erforschen</button>`;
+      }
+    }
+    return html + `</div>`;
+  }
+
+  private ordersHtml(): string {
+    const w = this.editor.world;
+    let html =
+      `<div class="muted" style="margin-bottom:10px;font-size:13px">Aufträge tauschen Items aus dem Hub-Lager gegen ` +
+      `Wertvolleres, manchmal gegen ein alternatives Rezept. Erledigt: ${w.ordersDone}.</div><div class="r-grid">`;
+    w.orders.forEach((o, i) => {
+      const have = Math.min(w.storage.get(o.item) ?? 0, o.count);
+      const recipe = o.recipe ? recipeById(o.recipe) : undefined;
+      html +=
+        `<div class="r-node open"><div class="r-name">Auftrag ${i + 1}</div>` +
+        `<div class="cost-row"><span>${dot(o.item)}${itemName(o.item)}</span><span class="num">${have}/${o.count}</span>` +
+        `<div class="bar${have >= o.count ? " done" : ""}"><div class="fill" style="width:${(100 * have) / o.count}%"></div></div></div>` +
+        `<div class="caps">Belohnung</div>` +
+        (recipe ? `<div class="recipe-card">${recipeHtml(recipe)}</div>` : `<div class="row">${costChips(o.reward)}</div>`) +
+        `<div class="row"><button class="primary" data-order="${i}"${have >= o.count ? "" : " disabled"}>Liefern</button>` +
+        `<button data-discard="${i}">Ablehnen</button></div></div>`;
     });
     return html + `</div>`;
   }
@@ -160,6 +245,9 @@ export class Overview {
       this.update();
     } else if (btn.dataset.action === "close") this.close();
     else if (btn.dataset.action === "upgrade") this.editor.upgradeHub();
+    else if (btn.dataset.research) this.editor.research(btn.dataset.research);
+    else if (btn.dataset.order) this.editor.fulfillOrder(Number(btn.dataset.order));
+    else if (btn.dataset.discard) this.editor.discardOrder(Number(btn.dataset.discard));
   };
 }
 

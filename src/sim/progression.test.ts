@@ -24,7 +24,8 @@ function stock(w: World, items: [ItemId, number][]) {
 /** Welt auf Stufe `tier` mit reichlich Lager. */
 function richWorld(tier = MAX_TIER): World {
   const w = new World();
-  w.tier = tier;
+  if (tier === MAX_TIER) w.unlockAll();
+  else w.tier = tier;
   stock(w, [
     ["iron_plate", 500],
     ["copper_plate", 500],

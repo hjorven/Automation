@@ -3,6 +3,7 @@ import { ITEM_ORDER, type ItemId } from "../sim/items";
 import { MAX_TIER, TIERS, buildCost } from "../sim/progression";
 import { toolName } from "./catalog";
 import { byId, costChips, dot, fmt, itemName } from "./dom";
+import type { OverviewTab } from "./overview";
 
 const RING_R = 19;
 const RING_LEN = 2 * Math.PI * RING_R;
@@ -19,11 +20,11 @@ export class Hud {
 
   constructor(
     private readonly editor: Editor,
-    private readonly onOverview: (tab: "tiers" | "inventory" | "stats") => void,
+    private readonly onOverview: (tab: OverviewTab) => void,
   ) {
     this.el.addEventListener("click", (ev) => {
       const btn = (ev.target as HTMLElement).closest<HTMLElement>("[data-open]");
-      if (btn) this.onOverview(btn.dataset.open as "tiers" | "inventory" | "stats");
+      if (btn) this.onOverview(btn.dataset.open as OverviewTab);
     });
   }
 
@@ -81,8 +82,8 @@ export class Hud {
       : `<div class="hint">Bohrer auf Erz setzen und per Band zum Hub führen. Zwei Finger: bewegen, zoomen, drehen.</div>`;
 
     html +=
-      `<div class="foot"><button data-open="inventory">Lager</button>` +
-      `<button data-open="stats">Statistik</button><button data-open="tiers">Stufen</button></div>`;
+      `<div class="foot"><button data-open="tiers">Stufen</button><button data-open="research">Forschung</button>` +
+      `<button data-open="orders">Aufträge</button><button data-open="inventory">Lager</button></div>`;
     this.el.innerHTML = html;
     this.lastCounts.clear();
     this.buildHtml = "";

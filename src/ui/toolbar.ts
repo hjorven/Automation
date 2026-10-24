@@ -1,6 +1,7 @@
 import type { Editor, Tool } from "../game/editor";
 import type { ThumbnailId } from "../render3d/thumbnails";
 import { TIERS, buildCost } from "../sim/progression";
+import { researchForBuilding } from "../sim/research";
 import {
   GROUP_LABELS,
   TOOL_INFO,
@@ -100,7 +101,7 @@ export class Toolbar {
     for (const btn of this.el.querySelectorAll<HTMLButtonElement>("[data-tool]")) {
       const tool = btn.dataset.tool as Tool;
       const tier = toolTier(tool);
-      const unlocked = tier <= w.tier;
+      const unlocked = tool === "hand" || tool === "delete" || w.isUnlocked(tool);
       btn.classList.toggle("active", tool === this.editor.tool);
       btn.classList.toggle("locked", !unlocked);
       // Gesperrtes nur fuer die naechste Stufe zeigen, alles Spaetere bleibt Ueberraschung.
@@ -185,7 +186,10 @@ export class Toolbar {
     let html =
       `<div class="tt-title"><span>${toolName(tool)}</span>${key ? `<span class="num muted">${key.toUpperCase()}</span>` : ""}</div>` +
       `<div class="tt-text">${TOOL_INFO[tool] ?? ""}</div>`;
-    if (tier > w.tier) {
+    const node = tool === "hand" || tool === "delete" ? undefined : researchForBuilding(tool);
+    if (node && !w.research.has(node.id)) {
+      html += `<div class="tt-lock">Gesperrt: Forschung „${node.name}“ (ab Stufe ${node.tier})</div>`;
+    } else if (tier > w.tier) {
       html += `<div class="tt-lock">Gesperrt: ab Stufe ${tier} (${TIERS[tier]?.name ?? "?"})</div>`;
     }
     html += cost.length

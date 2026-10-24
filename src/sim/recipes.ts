@@ -13,9 +13,13 @@ export interface Recipe {
   inputs: ItemStack[];
   outputs: ItemStack[];
   ticks: number;
+  /** Alternatives Rezept: freischaltbar ueber Forschung, Auftraege oder Fundstuecke. */
+  alt?: boolean;
+  /** Anzeigename fuer alternative Rezepte. */
+  name?: string;
 }
 
-export const RECIPES: readonly Recipe[] = [
+export const BASE_RECIPES: readonly Recipe[] = [
   {
     id: "smelt_iron",
     machine: "smelter",
@@ -228,6 +232,149 @@ export const RECIPES: readonly Recipe[] = [
   },
 ];
 
+/**
+ * Alternative Rezepte: andere Wege zu bekannten Produkten, damit jede Fabrik
+ * anders aussehen kann. Freigeschaltet ueber Forschung (research.ts),
+ * Auftraege oder Fundstuecke in der Welt (World.unlockRecipe).
+ */
+export const ALT_RECIPES: readonly Recipe[] = [
+  {
+    id: "alt_fine_wire",
+    name: "Feiner Draht",
+    alt: true,
+    machine: "assembler",
+    inputs: [{ item: "copper_plate", count: 2 }],
+    outputs: [{ item: "wire", count: 5 }],
+    ticks: 30,
+  },
+  {
+    id: "alt_cast_iron",
+    name: "Gusseisen",
+    alt: true,
+    machine: "foundry",
+    inputs: [
+      { item: "iron_ore", count: 3 },
+      { item: "coal", count: 1 },
+    ],
+    outputs: [{ item: "iron_plate", count: 4 }],
+    ticks: 40,
+  },
+  {
+    id: "alt_steel_gear",
+    name: "Stahlzahnrad",
+    alt: true,
+    machine: "assembler",
+    inputs: [{ item: "steel", count: 1 }],
+    outputs: [{ item: "gear", count: 2 }],
+    ticks: 20,
+  },
+  {
+    id: "alt_bolted_plate",
+    name: "Verschraubte Platte",
+    alt: true,
+    machine: "assembler",
+    inputs: [
+      { item: "iron_plate", count: 6 },
+      { item: "gear", count: 2 },
+    ],
+    outputs: [{ item: "reinforced_plate", count: 1 }],
+    ticks: 50,
+  },
+  {
+    id: "alt_steel_rotor",
+    name: "Stahlrotor",
+    alt: true,
+    machine: "assembler",
+    inputs: [{ item: "steel", count: 3 }],
+    outputs: [{ item: "rotor", count: 1 }],
+    ticks: 40,
+  },
+  {
+    id: "alt_quick_concrete",
+    name: "Schnellbeton",
+    alt: true,
+    machine: "foundry",
+    inputs: [
+      { item: "stone", count: 2 },
+      { item: "coal", count: 1 },
+    ],
+    outputs: [{ item: "concrete", count: 1 }],
+    ticks: 20,
+  },
+  {
+    id: "alt_rotor_motor",
+    name: "Rotormotor",
+    alt: true,
+    machine: "assembler",
+    inputs: [
+      { item: "rotor", count: 1 },
+      { item: "wire", count: 6 },
+    ],
+    outputs: [{ item: "motor", count: 1 }],
+    ticks: 50,
+  },
+  {
+    id: "alt_coal_fuel",
+    name: "Kohleverflüssigung",
+    alt: true,
+    machine: "refinery",
+    inputs: [{ item: "coal", count: 2 }],
+    outputs: [{ item: "fuel", count: 1 }],
+    ticks: 40,
+  },
+  {
+    id: "alt_plastic_circuit",
+    name: "Kunststoff-Schaltkreis",
+    alt: true,
+    machine: "assembler",
+    inputs: [
+      { item: "plastic", count: 1 },
+      { item: "wire", count: 3 },
+    ],
+    outputs: [{ item: "circuit", count: 1 }],
+    ticks: 20,
+  },
+  {
+    id: "alt_silicon_circuit",
+    name: "Silizium-Schaltkreis",
+    alt: true,
+    machine: "assembler",
+    inputs: [
+      { item: "silicon", count: 1 },
+      { item: "wire", count: 2 },
+    ],
+    outputs: [{ item: "circuit", count: 2 }],
+    ticks: 30,
+  },
+  {
+    id: "alt_quartz_melt",
+    name: "Quarzschmelze",
+    alt: true,
+    machine: "foundry",
+    inputs: [
+      { item: "quartz", count: 2 },
+      { item: "coal", count: 1 },
+    ],
+    outputs: [{ item: "silicon", count: 3 }],
+    ticks: 60,
+  },
+  {
+    id: "alt_pure_alu",
+    name: "Reines Aluminium",
+    alt: true,
+    machine: "refinery",
+    inputs: [
+      { item: "bauxite", count: 2 },
+      { item: "fuel", count: 1 },
+    ],
+    outputs: [{ item: "aluminium", count: 2 }],
+    ticks: 60,
+  },
+];
+
+/** Alle Rezepte: Standard zuerst, dann die alternativen. */
+export const RECIPES: readonly Recipe[] = [...BASE_RECIPES, ...ALT_RECIPES];
+
 export function recipeById(id: string): Recipe | undefined {
   return RECIPES.find((r) => r.id === id);
 }
@@ -238,5 +385,5 @@ export function recipesFor(machine: MachineKind): Recipe[] {
 
 /** Schmelzen waehlen ihr Rezept automatisch anhand des ersten Erzes. */
 export function smeltingRecipeFor(item: ItemId): Recipe | undefined {
-  return RECIPES.find((r) => r.machine === "smelter" && r.inputs.some((s) => s.item === item));
+  return BASE_RECIPES.find((r) => r.machine === "smelter" && r.inputs.some((s) => s.item === item));
 }

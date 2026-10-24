@@ -23,13 +23,15 @@ import {
   POWER_TIER,
   TIERS,
   buildCost,
-  buildingTier,
   canAfford,
+  hubBuildingTier,
+  hubRecipeTier,
   powerUse,
-  recipeTier,
   type BuildId,
 } from "./progression";
-import { recipesFor, type ItemStack, type Recipe } from "./recipes";
+import { ALT_RECIPES, recipeById, recipesFor, type ItemStack, type Recipe } from "./recipes";
+import { RESEARCH, researchById, researchForRecipe, totalBonus, type Bonus } from "./research";
+import { ORDER_SLOTS, makeOrder, type Order } from "./orders";
 import { oreAt, waterAt } from "./terrain";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
@@ -39,6 +41,9 @@ export type BuildError =
   | "water" // Feld liegt im Wasser
   | "locked"
   | "cost";
+
+/** Warum ein Forschungsknoten (noch) nicht erforscht werden kann. */
+export type ResearchError = "unknown" | "done" | "tier" | "requires" | "cost";
 
 export class World implements Host {
   tick = 0;
@@ -53,6 +58,19 @@ export class World implements Host {
   /** Insgesamt Abgeliefertes, sinkt nie (fuer Statistiken). */
   readonly delivered = new Map<ItemId, number>();
 
+  /** Erforschte Knoten aus dem Forschungsbaum (Ids aus RESEARCH). */
+  readonly research = new Set<string>();
+  /** Einzeln freigeschaltete Rezepte (Auftraege, Fundstuecke). */
+  readonly extraRecipes = new Set<string>();
+  /** Summe der Forschungsboni. */
+  bonus: Bonus = totalBonus([]);
+  /** Angebotene Auftraege. */
+  orders: Order[] = [];
+  /** Laufende Nummer des naechsten Auftrags (bestimmt seinen Inhalt). */
+  orderSeq = 0;
+  /** Erledigte Auftraege. */
+  ordersDone = 0;
+
   /** Strom in MW, jeden Tick neu berechnet. `factor` bremst Verbraucher bei Mangel. */
   readonly power = { supply: 0, demand: 0, factor: 1 };
   powerFactor = 1;
@@ -65,6 +83,7 @@ export class World implements Host {
   static createDefault(): World {
     const w = new World();
     w.place("hub", 0, 0, 0);
+    w.fillOrders();
     return w;
   }
 
@@ -80,6 +99,11 @@ export class World implements Host {
 
   recipeUnlocked(r: Recipe): boolean {
     return this.isRecipeUnlocked(r);
+  }
+
+  /** Bohrtempo-Faktor aus der Forschung. */
+  get extractBoost(): number {
+    return 1 + this.bonus.extractSpeed;
   }
 
   /** Strom zaehlt erst ab der Energie-Stufe. */
@@ -98,11 +122,109 @@ export class World implements Host {
   }
 
   isUnlocked(id: BuildId): boolean {
-    return buildingTier(id) <= this.tier;
+    if (hubBuildingTier(id) <= this.tier) return true;
+    return RESEARCH.some((n) => n.buildings.includes(id) && this.research.has(n.id));
   }
 
   isRecipeUnlocked(r: Recipe): boolean {
-    return recipeTier(r.id) <= this.tier;
+    if (hubRecipeTier(r.id) <= this.tier || this.extraRecipes.has(r.id)) return true;
+    const n = researchForRecipe(r.id);
+    return !!n && this.research.has(n.id);
+  }
+
+  /**
+   * Einzelnes Rezept freischalten, z. B. als Belohnung fuer einen Auftrag oder
+   * ein Fundstueck. Liefert true, wenn es vorher gesperrt war.
+   */
+  unlockRecipe(id: string): boolean {
+    const r = recipeById(id);
+    if (!r || this.isRecipeUnlocked(r)) return false;
+    this.extraRecipes.add(id);
+    this.replaceKnownRecipeOrders();
+    this.storageVersion++;
+    this.version++;
+    return true;
+  }
+
+  /** Warum `doResearch(id)` scheitern wuerde, sonst null. */
+  researchError(id: string): ResearchError | null {
+    const n = researchById(id);
+    if (!n) return "unknown";
+    if (this.research.has(id)) return "done";
+    if (n.tier > this.tier) return "tier";
+    if (!n.requires.every((r) => this.research.has(r))) return "requires";
+    if (!this.canAfford(n.cost)) return "cost";
+    return null;
+  }
+
+  /** Forschungsknoten bezahlen und freischalten. */
+  doResearch(id: string): boolean {
+    if (this.researchError(id)) return false;
+    this.pay(researchById(id)!.cost);
+    this.grantResearch(id);
+    return true;
+  }
+
+  /** Knoten ohne Kosten freischalten (Spielstaende, Tests). */
+  grantResearch(id: string) {
+    if (!researchById(id) || this.research.has(id)) return;
+    this.research.add(id);
+    this.bonus = totalBonus(this.research);
+    this.replaceKnownRecipeOrders();
+    this.storageVersion++;
+    this.version++;
+  }
+
+  /**
+   * Alles freischalten (fuer Tests): letzte Stufe, alle Gebaeude und Rezepte.
+   * Boni bleiben aus, damit Raten und Strom wie ohne Forschung rechnen.
+   */
+  unlockAll() {
+    this.tier = MAX_TIER;
+    for (const n of RESEARCH) if (!n.bonus) this.grantResearch(n.id);
+    for (const r of ALT_RECIPES) this.unlockRecipe(r.id);
+  }
+
+  /** Auftragsliste auf ORDER_SLOTS auffuellen. */
+  fillOrders() {
+    while (this.orders.length < ORDER_SLOTS) this.orders.push(this.nextOrder());
+  }
+
+  private nextOrder(): Order {
+    const known = (id: string) => {
+      const r = recipeById(id);
+      return !r || this.isRecipeUnlocked(r) || this.orders.some((o) => o.recipe === id);
+    };
+    return makeOrder(this.orderSeq++, this.tier, known);
+  }
+
+  /** Auftraege, deren Rezept inzwischen anders freigeschaltet wurde, ersetzen. */
+  private replaceKnownRecipeOrders() {
+    this.orders.forEach((o, i) => {
+      const r = o.recipe ? recipeById(o.recipe) : undefined;
+      if (r && this.isRecipeUnlocked(r)) this.orders[i] = this.nextOrder();
+    });
+  }
+
+  /** Auftrag aus dem Hub-Lager bedienen; gibt die Belohnung und ersetzt ihn. */
+  fulfillOrder(index: number): boolean {
+    const o = this.orders[index];
+    if (!o || !this.canAfford([{ item: o.item, count: o.count }])) return false;
+    this.pay([{ item: o.item, count: o.count }]);
+    this.refund(o.reward);
+    this.ordersDone++;
+    this.orders[index] = this.nextOrder();
+    if (o.recipe) this.unlockRecipe(o.recipe);
+    this.storageVersion++;
+    return true;
+  }
+
+  /** Auftrag ablehnen und gegen einen neuen tauschen. */
+  discardOrder(index: number): boolean {
+    if (!this.orders[index]) return false;
+    this.orders[index] = this.nextOrder();
+    this.storageVersion++;
+    return true;
   }
 
   canAfford(cost: readonly ItemStack[]): boolean {
@@ -170,6 +292,7 @@ export class World implements Host {
     this.pay(next.cost);
     this.tier++;
     this.version++;
+    this.fillOrders();
     return true;
   }
 
@@ -300,7 +423,7 @@ export class World implements Host {
       if (e instanceof Generator && e.burning) supply += e.spec.power;
       else if (e.type === "hub") hub = true;
     }
-    if (hub) supply += HUB_POWER;
+    if (hub) supply += HUB_POWER + this.bonus.hubPower;
     const p = this.power;
     p.demand = demand;
     p.supply = supply;

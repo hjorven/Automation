@@ -3,13 +3,15 @@ import { Generator, Storage, type Belt, type Entity, type EntityType } from "./e
 import { ITEM_ORDER, type ItemId } from "./items";
 import { MAX_TIER } from "./progression";
 import { recipeById } from "./recipes";
+import { RESEARCH } from "./research";
+import type { Order } from "./orders";
 import { World } from "./world";
 
 /**
  * Versioniertes Spielstand-Format. Bei Aenderungen SAVE_VERSION erhoehen und
  * in `migrate` einen Schritt von der alten auf die neue Version ergaenzen.
  */
-export const SAVE_VERSION = 3;
+export const SAVE_VERSION = 4;
 
 type Stacks = [ItemId, number][];
 
@@ -61,6 +63,14 @@ export interface SaveData {
   storage: Stacks;
   /** Insgesamt Abgeliefertes (seit v3). */
   delivered?: Stacks;
+  /** Erforschte Knoten (seit v4). */
+  research?: string[];
+  /** Einzeln freigeschaltete Rezepte (seit v4). */
+  extraRecipes?: string[];
+  /** Auftraege (seit v4). */
+  orders?: Order[];
+  orderSeq?: number;
+  ordersDone?: number;
   entities: SavedEntity[];
 }
 
@@ -73,6 +83,11 @@ export function serialize(world: World): SaveData {
     tier: world.tier,
     storage: [...world.storage],
     delivered: [...world.delivered],
+    research: [...world.research],
+    extraRecipes: [...world.extraRecipes],
+    orders: world.orders.map((o) => ({ ...o, reward: o.reward.map((r) => ({ ...r })) })),
+    orderSeq: world.orderSeq,
+    ordersDone: world.ordersDone,
     entities,
   };
 }
@@ -134,6 +149,16 @@ export function deserialize(raw: unknown): World {
   for (const [item, n] of data.delivered ?? []) {
     if (isItem(item) && n > 0) w.delivered.set(item, n);
   }
+  for (const id of data.research ?? []) if (typeof id === "string") w.grantResearch(id);
+  for (const id of data.extraRecipes ?? []) if (typeof id === "string") w.unlockRecipe(id);
+  w.orderSeq = Math.max(0, Math.floor(num(data.orderSeq)));
+  w.ordersDone = Math.max(0, Math.floor(num(data.ordersDone)));
+  for (const o of Array.isArray(data.orders) ? data.orders : []) {
+    if (!o || !isItem(o.item) || !(num(o.count) > 0) || !Array.isArray(o.reward)) continue;
+    const reward = o.reward.filter((r) => isItem(r?.item) && num(r.count) > 0).map((r) => ({ item: r.item, count: Math.floor(r.count) }));
+    w.orders.push({ item: o.item, count: Math.floor(o.count), reward, ...(typeof o.recipe === "string" && recipeById(o.recipe) ? { recipe: o.recipe } : {}) });
+  }
+  w.fillOrders();
 
   for (const s of data.entities) {
     if (!isType(s.type) || !isDir(s.dir) || !Number.isInteger(s.x) || !Number.isInteger(s.y)) continue;
@@ -232,6 +257,13 @@ function migrate(raw: unknown): SaveData {
     data.tier = map[Math.min(map.length - 1, Math.max(0, Math.floor(num(data.tier))))];
     data.delivered = data.storage;
     data.version = 3;
+  }
+  if (data.version === 3) {
+    // v3 -> v4: Forschungsbaum. Was frueher die erreichte Stufe freigeschaltet
+    // hat, gilt als erforscht; Auftraege entstehen beim Laden neu.
+    const tier = Math.floor(num(data.tier));
+    data.research = RESEARCH.filter((n) => n.legacyTier !== undefined && n.legacyTier <= tier).map((n) => n.id);
+    data.version = 4;
   }
   if (!Array.isArray(data.entities) || !Array.isArray(data.storage)) {
     throw new Error("Spielstand ist unvollständig");
