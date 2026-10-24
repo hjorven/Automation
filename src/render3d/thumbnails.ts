@@ -15,6 +15,8 @@ import type { BuildId } from "../sim/progression";
 import {
   accumulatorModel,
   assemblerModel,
+  BRIDGE_Y,
+  bridgeSupportGeometry,
   createBeltTexture,
   extractorMk2Model,
   extractorMk3Model,
@@ -29,11 +31,13 @@ import {
   manufacturerModel,
   mat,
   mergerModel,
+  paintMat,
   pipeModel,
   pipePumpModel,
   pumpModel,
   radarModel,
   wreckModel,
+  rampModel,
   refineryModel,
   smelterModel,
   solarModel,
@@ -114,6 +118,8 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["radar", radarModel],
     ["wreck", wreckModel],
     ["turret", turretModel],
+    ["bridge", () => bridgeModel(beltTex)],
+    ["ramp", () => rampModel(true)],
     ["pipe", () => pipeModel(0b0011)],
     ["pipe_pump", () => pipePumpModel(0b0101)],
     ["fluid_tank", () => fluidTankModel(0b0001)],
@@ -123,7 +129,7 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
   for (const [type, build] of builders) {
     const model = build();
     // Hub ist hoeher als die anderen Gebaeude: etwas weiter herauszoomen.
-    cam.zoom = type === "hub" || type === "radar" ? 0.82 : type === "fluid_tank" ? 0.86 : type.startsWith("belt") ? 1.15 : 1;
+    cam.zoom = type === "hub" || type === "radar" ? 0.82 : type === "fluid_tank" || type === "ramp" || type === "bridge" ? 0.8 : type.startsWith("belt") ? 1.15 : 1;
     cam.updateProjectionMatrix();
     model.traverse((o) => {
       // Glut und Leuchtfeuer sichtbar machen, Rauch ausblenden.
@@ -150,5 +156,16 @@ function beltModel(tex: ReturnType<typeof createBeltTexture>, rail: number): Gro
   const g = new Group();
   g.add(new Mesh(straightBedGeometry(), new MeshStandardMaterial({ map: tex, roughness: 0.9 })));
   g.add(new Mesh(straightFrameGeometry(), mat(rail, { rough: 0.6 })));
+  return g;
+}
+
+/** Hochband auf seiner Stuetze. */
+function bridgeModel(tex: ReturnType<typeof createBeltTexture>): Group {
+  const g = new Group();
+  g.add(new Mesh(bridgeSupportGeometry(), paintMat));
+  const belt = beltModel(tex, PALETTE.beltRail);
+  belt.position.y = BRIDGE_Y;
+  g.add(belt);
+  g.position.y = -0.35;
   return g;
 }

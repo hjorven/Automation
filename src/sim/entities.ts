@@ -9,7 +9,8 @@ import type { FluidCarrier, PipeKind } from "./fluids";
 /** Was ein Gebaeude von der Welt braucht (vermeidet zyklische Imports). */
 export interface Host {
   readonly tick: number;
-  entityAt(x: number, y: number): Entity | undefined;
+  /** `layer` 1 = Bruecken-Ebene ueber dem Boden. */
+  entityAt(x: number, y: number, layer?: number): Entity | undefined;
   deliver(item: ItemId): void;
   /** Anteil der Leistung, mit dem Strom-Verbraucher laufen (0..1). */
   readonly powerFactor: number;
@@ -42,10 +43,13 @@ export type EntityType =
   | "radar"
   | "wreck"
   | "turret"
+  | "ramp"
   | PipeKind;
 
 export abstract class EntityBase {
   abstract readonly type: EntityType;
+  /** Ebene: 0 = Boden, 1 = Bruecke (nur Hochbaender). */
+  layer: 0 | 1 = 0;
 
   constructor(
     readonly id: number,
@@ -62,13 +66,13 @@ export abstract class EntityBase {
 
   update(_host: Host): void {}
 
-  /** Liefert dieses Gebaeude Items auf Feld (x, y)? */
-  outputsTo(x: number, y: number): boolean {
+  /** Liefert dieses Gebaeude Items auf Feld (x, y) der Ebene `layer`? */
+  outputsTo(x: number, y: number, _layer = this.layer): boolean {
     return this.x + DX[this.dir] === x && this.y + DY[this.dir] === y;
   }
 
   protected front(host: Host): Entity | undefined {
-    return host.entityAt(this.x + DX[this.dir], this.y + DY[this.dir]);
+    return host.entityAt(this.x + DX[this.dir], this.y + DY[this.dir], this.layer);
   }
 
   protected pushForward(item: ItemId, host: Host): boolean {
@@ -87,8 +91,9 @@ export interface BeltItem {
   movedAt: number;
 }
 
-export class Belt extends EntityBase {
-  readonly type = "belt";
+/** Gemeinsame Logik von Band und Rampe: Items gleiten von hinten nach vorne. */
+export abstract class Conveyor extends EntityBase {
+  abstract readonly type: "belt" | "ramp";
   /** items[0] liegt am weitesten vorne. */
   items: BeltItem[] = [];
   /** Bandstufe: Mk1 bis Mk3 laufen 1-, 2- und 4-mal so schnell (Durchsatz ebenso). */
@@ -138,7 +143,7 @@ export class Belt extends EntityBase {
     const target = this.front(host);
     if (target && target.accept(head.item, opposite(this.dir), host)) {
       this.items.shift();
-      if (target instanceof Belt) {
+      if (target instanceof Conveyor) {
         // Ueberschuss mitnehmen, damit schnelle Baender an Kanten nicht bremsen,
         // und die Bewegung ueber die Feldgrenze fluessig weiterzeichnen.
         const moved = target.items[target.items.length - 1];
@@ -148,6 +153,43 @@ export class Belt extends EntityBase {
         moved.prev = head.prev - 1;
       }
     }
+  }
+}
+
+export class Belt extends Conveyor {
+  readonly type = "belt";
+}
+
+/**
+ * Rampe zwischen Boden und Bruecke. Nach oben: nimmt am Boden von hinten an,
+ * gibt vorne auf die Bruecke ab. Nach unten: umgekehrt. Belegt am eigenen
+ * Feld beide Ebenen.
+ */
+export class Ramp extends Conveyor {
+  readonly type = "ramp";
+  up = true;
+
+  constructor(id: number, x: number, y: number, dir: Dir) {
+    super(id, x, y, dir);
+    // Rampen sollen nie bremsen.
+    this.level = 3;
+  }
+
+  /** Ebene, auf der die Rampe ausgibt. */
+  get outLayer(): 0 | 1 {
+    return this.up ? 1 : 0;
+  }
+
+  accept(item: ItemId, side: Dir, host: Host): boolean {
+    return side === opposite(this.dir) && super.accept(item, side, host);
+  }
+
+  protected front(host: Host): Entity | undefined {
+    return host.entityAt(this.x + DX[this.dir], this.y + DY[this.dir], this.outLayer);
+  }
+
+  outputsTo(x: number, y: number, layer = 0): boolean {
+    return layer === this.outLayer && super.outputsTo(x, y);
   }
 }
 
@@ -621,6 +663,7 @@ const TUNNEL_GAP = Math.ceil(ITEM_SPACING / BELT_SPEED);
 
 export type Entity =
   | Belt
+  | Ramp
   | Extractor
   | Machine
   | Hub

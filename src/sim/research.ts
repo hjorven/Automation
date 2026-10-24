@@ -116,6 +116,16 @@ export const RESEARCH: readonly ResearchNode[] = [
     legacyTier: 4,
   },
   {
+    id: "bridges",
+    name: "Brückenbau",
+    text: "Hochbänder auf Stelzen und Rampen, auch über Wasser",
+    tier: 4,
+    requires: [],
+    cost: [s("steel", 40), s("iron_plate", 150)],
+    buildings: ["bridge", "ramp"],
+    recipes: [],
+  },
+  {
     id: "cast_iron",
     name: "Gusseisen",
     tier: 4,

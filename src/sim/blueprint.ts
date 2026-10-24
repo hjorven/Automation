@@ -3,7 +3,7 @@ import { Machine, Sorter, Tunnel } from "./entities";
 import { ITEM_ORDER, type ItemId } from "./items";
 import { buildCost, buildingTier, type BuildId } from "./progression";
 import { recipeById, type ItemStack } from "./recipes";
-import { buildIdOf, type BuildError, type World } from "./world";
+import { buildIdOf, layerOf, type BuildError, type World } from "./world";
 
 /**
  * Blaupausen: ein rechteckiger Fabrikteil zum Kopieren und Einfuegen.
@@ -105,7 +105,7 @@ export function planPaste(world: World, bp: Blueprint, x: number, y: number): Pl
   return bp.entries.map((e) => {
     const tx = x + e.dx;
     const ty = y + e.dy;
-    const there = world.entityAt(tx, ty);
+    const there = world.entityAt(tx, ty, layerOf(e.id));
     if (there && buildIdOf(there) === e.id && there.dir === e.dir) return "same";
     const err = world.buildError(e.id, tx, ty);
     if (err && err !== "cost") return err;
@@ -146,7 +146,7 @@ export function demolishRect(world: World, rect: Rect): number {
   let n = 0;
   for (const e of [...world.entities.values()]) {
     if (e.x < r.x0 || e.x > r.x1 || e.y < r.y0 || e.y > r.y1 || e.type === "hub") continue;
-    world.demolish(e.x, e.y);
+    world.demolish(e.x, e.y, e.layer);
     n++;
   }
   return n;

@@ -7,7 +7,7 @@ import { RESEARCH } from "./research";
  * Was der Spieler bauen kann: alle Gebaeude plus die schnelleren Baender, die
  * als Band (Entity-Typ "belt") mit hoeherer Stufe entstehen.
  */
-export type BuildId = EntityType | "belt_mk2" | "belt_mk3";
+export type BuildId = EntityType | "belt_mk2" | "belt_mk3" | "bridge";
 
 /** Bandstufe je Bau-Id (1 = normales Band). */
 export const BELT_LEVEL: Partial<Record<BuildId, 1 | 2 | 3>> = { belt: 1, belt_mk2: 2, belt_mk3: 3 };
@@ -134,6 +134,8 @@ export const BUILD_COSTS: Partial<Record<BuildId, ItemStack[]>> = {
   accumulator: [s("iron_plate", 15), s("copper_plate", 20), s("circuit", 8)],
   foundry: [s("iron_plate", 10), s("gear", 6), s("circuit", 4)],
   belt_mk2: [s("steel", 1)],
+  bridge: [s("steel", 1), s("iron_plate", 2)],
+  ramp: [s("steel", 2), s("gear", 2)],
   extractor_mk2: [s("steel", 4), s("gear", 4), s("circuit", 2)],
   pipe: [s("steel", 1)],
   water_pump: [s("steel", 6), s("gear", 4), s("circuit", 2)],

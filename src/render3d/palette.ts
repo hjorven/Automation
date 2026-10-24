@@ -141,6 +141,12 @@ export const PALETTE = {
   waterPumpBlade: 0xffc94a,
   boiler: 0x8a3a2a,
 
+  // Bruecken und Rampen (models/levels.ts).
+  bridgePillar: 0x8a96a6,
+  bridgeBeam: 0xd9a63a,
+  bridgeDeck: 0x3a4250,
+  rampSide: 0x5c6878,
+
   // Bandstufen: Farbe der Seitenschienen.
   beltRailMk2: 0xd9533a,
   beltRailMk3: 0x3a8fd9,

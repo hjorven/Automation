@@ -1,5 +1,5 @@
 import type { Dir } from "./dir";
-import { Generator, Storage, type Belt, type Entity, type EntityType } from "./entities";
+import { Generator, Storage, type Conveyor, type Entity, type EntityType } from "./entities";
 import { ITEM_ORDER, type ItemId } from "./items";
 import { CREATURE_HP, NEST_HP, nestSites } from "./hazards";
 import { ACCUMULATOR, MAX_TIER } from "./progression";
@@ -29,7 +29,11 @@ export interface SavedEntity {
   x: number;
   y: number;
   dir: Dir;
-  /** Belt */
+  /** Ebene (nur gespeichert, wenn 1 = Bruecke) */
+  layer?: number;
+  /** Rampe: hinauf (true) oder hinunter */
+  up?: boolean;
+  /** Belt, Rampe */
   items?: SavedBeltItem[];
   /** Extractor, Splitter, Merger, Tunnel-Ausgang */
   timer?: number;
@@ -192,7 +196,10 @@ const arr = <T>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
 
 function saveEntity(e: Entity): SavedEntity {
   const base: SavedEntity = { type: e.type, x: e.x, y: e.y, dir: e.dir };
+  if (e.layer) base.layer = e.layer;
   switch (e.type) {
+    case "ramp":
+      return { ...base, up: e.up, items: e.items.map((i) => ({ item: i.item, progress: i.progress, entry: i.entry })) };
     case "belt":
       return {
         ...base,
@@ -289,7 +296,7 @@ export function deserialize(raw: unknown): World {
   for (const s of data.entities) {
     if (!isType(s.type) || !isDir(s.dir) || !Number.isInteger(s.x) || !Number.isInteger(s.y)) continue;
     const recipe = s.recipe ? (recipeById(s.recipe) ?? null) : null;
-    const e = w.place(s.type, s.x, s.y, s.dir, recipe);
+    const e = w.place(s.type, s.x, s.y, s.dir, recipe, s.layer === 1 ? 1 : 0);
     if (!e) continue; // z. B. Bohrer ohne Erz darunter: still ueberspringen
     restoreState(e, s, w.tick);
   }
@@ -306,6 +313,10 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
   switch (e.type) {
     case "belt":
       e.level = s.level === 2 || s.level === 3 ? s.level : 1;
+      restoreBelt(e, s.items ?? [], tick);
+      break;
+    case "ramp":
+      e.up = s.up !== false;
       restoreBelt(e, s.items ?? [], tick);
       break;
     case "extractor":
@@ -374,7 +385,7 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
   }
 }
 
-function restoreBelt(belt: Belt, items: SavedBeltItem[], tick: number) {
+function restoreBelt(belt: Conveyor, items: SavedBeltItem[], tick: number) {
   for (const i of items) {
     if (!isItem(i.item) || !isDir(i.entry)) continue;
     const progress = Math.min(1, Math.max(0, num(i.progress)));
@@ -449,6 +460,7 @@ const TYPES = new Set<string>([
   "splitter",
   "merger",
   "tunnel",
+  "ramp",
   "storage",
   "sorter",
   "solar",

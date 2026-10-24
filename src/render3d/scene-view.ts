@@ -17,16 +17,18 @@ import { BELT_SPEED, TICKS_PER_SECOND } from "../sim/constants";
 import { dayPhase, sunAngle } from "../sim/daycycle";
 import { ACCUMULATOR } from "../sim/progression";
 import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "../sim/dir";
-import { Storage, type Belt, type BeltItem, type Entity } from "../sim/entities";
+import { Storage, type Belt, type BeltItem, type Conveyor, type Entity, type Ramp } from "../sim/entities";
 import { FluidCarrier, PIPE_FLOW, pipeConnections } from "../sim/fluids";
 import { ITEM_ORDER, type ItemId } from "../sim/items";
 import type { World } from "../sim/world";
 import type { CameraRig } from "./camera-rig";
 import {
   BELT_TOP,
+  BRIDGE_Y,
   HUB_PAD_Y,
   accumulatorModel,
   assemblerModel,
+  bridgeSupportGeometry,
   createBeltTexture,
   curveBedGeometry,
   curveFrameGeometry,
@@ -44,12 +46,14 @@ import {
   manufacturerModel,
   mat,
   mergerModel,
+  paintMat,
   pipeModel,
   pipePumpModel,
   placeholderModel,
   pumpModel,
   radarModel,
   wreckModel,
+  rampModel,
   refineryModel,
   smelterModel,
   solarModel,
@@ -147,6 +151,8 @@ export class SceneView {
   private readonly beltTextures = [createBeltTexture(), createBeltTexture(), createBeltTexture()];
   private readonly beltBeds: GrowingInstances[];
   private readonly beltFrames: GrowingInstances[];
+  /** Stuetzen unter Hochbaendern. */
+  private readonly bridgeSupports: GrowingInstances;
   private readonly items = new Map<ItemId, GrowingInstances>();
   private readonly selection: Mesh;
 
@@ -177,6 +183,7 @@ export class SceneView {
       }
     }
     for (const f of this.beltFrames) f.mesh.receiveShadow = true;
+    this.bridgeSupports = new GrowingInstances(beltRoot, bridgeSupportGeometry(), paintMat);
 
     const itemRoot = new Group();
     sc.add(itemRoot);
@@ -216,7 +223,7 @@ export class SceneView {
     const sel = selectedId === null ? undefined : world.entities.get(selectedId);
     this.selection.visible = !!sel;
     if (sel) {
-      this.selection.position.set(sel.x + 0.5, 0.03, sel.y + 0.5);
+      this.selection.position.set(sel.x + 0.5, 0.03 + sel.layer * BRIDGE_Y, sel.y + 0.5);
       (this.selection.material as MeshBasicMaterial).opacity = 0.65 + 0.35 * Math.sin(t * 5);
     }
   }
@@ -249,12 +256,20 @@ export class SceneView {
       this.beltFrames[i].ensure(n);
     });
     const used = counts.map(() => 0);
+    const high = belts.filter(([b]) => b.layer === 1).length;
+    this.bridgeSupports.ensure(high);
+    let supports = 0;
     for (const [b, i] of belts) {
-      this.compose(b.x + 0.5, 0, b.y + 0.5, yawOf(b.dir));
+      this.compose(b.x + 0.5, b.layer * BRIDGE_Y, b.y + 0.5, yawOf(b.dir));
       this.beltBeds[i].mesh.setMatrixAt(used[i], this.m);
       this.beltFrames[i].mesh.setMatrixAt(used[i], this.m);
       used[i]++;
+      if (b.layer === 1) {
+        this.compose(b.x + 0.5, 0, b.y + 0.5, yawOf(b.dir));
+        this.bridgeSupports.mesh.setMatrixAt(supports++, this.m);
+      }
     }
+    this.bridgeSupports.commit(supports);
     used.forEach((n, i) => {
       this.beltBeds[i].commit(n);
       this.beltFrames[i].commit(n);
@@ -515,17 +530,17 @@ export class SceneView {
   private drawItems(world: World, alpha: number) {
     const n = new Map<ItemId, number>();
     for (const e of world.entities.values()) {
-      if (e.type !== "belt") continue;
+      if (e.type !== "belt" && e.type !== "ramp") continue;
       for (const it of e.items) n.set(it.item, (n.get(it.item) ?? 0) + 1);
     }
     for (const [id, inst] of this.items) inst.ensure(n.get(id) ?? 0);
 
     const used = new Map<ItemId, number>();
     for (const e of world.entities.values()) {
-      if (e.type !== "belt") continue;
+      if (e.type !== "belt" && e.type !== "ramp") continue;
       for (const it of e.items) {
         const pose = beltItemPose(e, it, alpha);
-        this.compose(pose.x, BELT_TOP, pose.z, pose.yaw, this.itemScale);
+        this.compose(pose.x, BELT_TOP + itemLift(e, it, alpha), pose.z, pose.yaw, this.itemScale);
         const k = used.get(it.item) ?? 0;
         this.items.get(it.item)!.mesh.setMatrixAt(k, this.m);
         used.set(it.item, k + 1);
@@ -615,6 +630,7 @@ function nodeKey(e: Entity, world: World): string {
 
 function templateKey(e: Entity, world: World): string {
   if (e.type === "tunnel") return `tunnel:${e.exit ? "out" : "in"}`;
+  if (e.type === "ramp") return `ramp:${e.up ? "up" : "down"}`;
   if (e instanceof FluidCarrier) return `${e.type}:${pipeMask(e, world)}`;
   return e.type;
 }
@@ -630,6 +646,8 @@ function pipeMask(e: Entity, world: World): number {
 
 function buildTemplate(e: Exclude<Entity, Belt>, mask: number): Group {
   switch (e.type) {
+    case "ramp":
+      return rampModel(e.up);
     case "pipe":
       return pipeModel(mask);
     case "pipe_pump":
@@ -736,7 +754,14 @@ function setIcon(holder: Object3D, item: ItemId | null) {
  * Position eines Items auf einem Band. Gerade: Eintrittskante -> Mitte ->
  * Austrittskante. Kurve: Viertelkreis um die Ecke zwischen beiden Kanten.
  */
-function beltItemPose(b: Belt, it: BeltItem, alpha: number) {
+/** Hoehe eines Items ueber der Bandoberflaeche: Bruecke oder anteilig auf der Rampe. */
+function itemLift(c: Belt | Ramp, it: BeltItem, alpha: number): number {
+  if (c.type === "belt") return c.layer * BRIDGE_Y;
+  const p = Math.min(1, Math.max(0, it.prev + (it.progress - it.prev) * alpha));
+  return (c.up ? p : 1 - p) * BRIDGE_Y;
+}
+
+function beltItemPose(b: Conveyor, it: BeltItem, alpha: number) {
   const p = it.prev + (it.progress - it.prev) * alpha;
   const cx = b.x + 0.5;
   const cz = b.y + 0.5;

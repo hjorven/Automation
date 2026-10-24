@@ -41,7 +41,12 @@ export class Panel {
     const w = this.editor.world;
 
     const thumb = this.thumbs[e.type];
-    const title = e.type === "belt" && e.level > 1 ? `Förderband Mk${e.level}` : toolName(e.type);
+    const title =
+      e.type === "belt" && e.layer === 1
+        ? `Hochband Mk${e.level}`
+        : e.type === "belt" && e.level > 1
+          ? `Förderband Mk${e.level}`
+          : toolName(e.type);
     let html =
       `<div class="p-head">${thumb ? `<img src="${thumb}" alt="">` : `<span class="ph"></span>`}` +
       `<div><div class="p-title">${title}</div><div data-status></div></div>` +
@@ -87,6 +92,7 @@ export class Panel {
       `<div class="actions">` +
       (e.type !== "hub" ? `<button data-action="rotate">Drehen</button>` : "") +
       (e.type === "tunnel" ? `<button data-action="toggle-tunnel">${e.exit ? "Zum Eingang" : "Zum Ausgang"}</button>` : "") +
+      (e.type === "ramp" ? `<button data-action="toggle-ramp">${e.up ? "Nach unten" : "Nach oben"}</button>` : "") +
       (mk2 ? `<button data-action="mk2">Auf Mk2 aufrüsten</button>` : "") +
       (e.type === "hub"
         ? `<button data-action="overview">Alle Stufen</button><button data-action="research">Forschung</button>` +
@@ -136,6 +142,8 @@ export class Panel {
       return `Fördert ${itemLabel(e.ore)}${speed}.${purity}`;
     }
     if (e.type === "tunnel") return `${e.exit ? "Ausgang" : "Eingang"}. ${TOOL_INFO.tunnel}`;
+    if (e.type === "ramp") return `Führt ${e.up ? "hinauf auf" : "hinunter von"} die Brücke. ${TOOL_INFO.ramp}`;
+    if (e.type === "belt" && e.layer === 1) return TOOL_INFO.bridge ?? "";
     return TOOL_INFO[e.type] ?? "";
   }
 
@@ -212,6 +220,7 @@ export class Panel {
     else if (btn.dataset.action === "close") ed.clearSelection();
     else if (btn.dataset.action === "upgrade") ed.upgradeHub();
     else if (btn.dataset.action === "toggle-tunnel") ed.toggleSelectedTunnel();
+    else if (btn.dataset.action === "toggle-ramp") ed.toggleSelectedRamp();
     else if (btn.dataset.action === "mk2") ed.upgradeSelectedExtractor();
     else if (btn.dataset.action === "overview") this.onOverview("tiers");
     else if (btn.dataset.action === "research") this.onOverview("research");
@@ -260,6 +269,7 @@ function status(e: Entity, w: Editor["world"]): Status {
       if (e.exit) return { text: "Ausgang", cls: "" };
       return e.partner(w) ? { text: "Verbunden", cls: "ok" } : { text: "Kein Ausgang in Reichweite", cls: "bad" };
     case "belt":
+    case "ramp":
       return e.items.length ? { text: `${e.items.length} Items`, cls: "ok" } : { text: "Leer", cls: "" };
     case "storage":
       return e.queue.length >= Storage.CAPACITY ? { text: "Voll", cls: "warn" } : e.queue.length ? { text: "Puffert", cls: "ok" } : { text: "Leer", cls: "" };

@@ -5,6 +5,7 @@ import { isNight, sunlight } from "./daycycle";
 import {
   Accumulator,
   Belt,
+  Conveyor,
   Extractor,
   Generator,
   Hub,
@@ -13,6 +14,7 @@ import {
   Solar,
   Radar,
   Wreck,
+  Ramp,
   Sorter,
   Splitter,
   Storage,
@@ -138,8 +140,13 @@ export class World implements Host {
     return w;
   }
 
-  entityAt(x: number, y: number): Entity | undefined {
-    return this.grid.get(tileKey(x, y));
+  entityAt(x: number, y: number, layer = 0): Entity | undefined {
+    return this.grid.get(slotKey(x, y, layer));
+  }
+
+  /** Oberstes Gebaeude auf einem Feld (Bruecke vor Boden). */
+  topAt(x: number, y: number): Entity | undefined {
+    return this.entityAt(x, y, 1) ?? this.entityAt(x, y, 0);
   }
 
   deliver(item: ItemId) {
@@ -162,8 +169,11 @@ export class World implements Host {
     return this.tier >= POWER_TIER;
   }
 
-  canPlace(type: EntityType, x: number, y: number): boolean {
-    if (this.grid.has(tileKey(x, y))) return false;
+  canPlace(type: EntityType, x: number, y: number, layer = 0): boolean {
+    if (this.grid.has(slotKey(x, y, layer))) return false;
+    // Auf der Bruecke gibt es nur Baender; Rampen brauchen beide Ebenen.
+    if (layer === 1) return type === "belt";
+    if (type === "ramp" && this.grid.has(slotKey(x, y, 1))) return false;
     if (type === "water_pump") return this.gen.obstacleAt(x, y) === "water";
     const ore = this.gen.oreAt(x, y);
     if (type === "pump") return ore === "crude_oil";
@@ -288,15 +298,18 @@ export class World implements Host {
     if (!this.isUnlocked(id)) return "locked";
     if (!this.isExplored(x, y)) return "fog";
     const type = entityTypeOf(id);
-    if (!this.canPlace(type, x, y)) {
-      if (this.grid.has(tileKey(x, y))) return "blocked";
+    const layer = layerOf(id);
+    if (!this.canPlace(type, x, y, layer)) {
+      if (this.grid.has(slotKey(x, y, layer)) || type === "ramp") return "blocked";
       return type === "water_pump" ? "dry" : "ore";
     }
     // Nester nur fuer den Spieler sperren (wie Wasser), damit alte Spielstaende weiter laden.
     if (this.hazards.nestAt(x, y)) return "blocked";
     // Nur fuer den Spieler: alte Spielstaende mit Gebaeuden auf heutigen Seen laden weiter.
+    // Bruecken duerfen ueber Wasser und Lava fuehren, nicht durch Fels.
     const obstacle = this.gen.obstacleAt(x, y);
-    if (obstacle && !(obstacle === "water" && type === "water_pump")) return obstacle;
+    const bridged = layer === 1 && obstacle !== "cliff";
+    if (obstacle && !bridged && !(obstacle === "water" && type === "water_pump")) return obstacle;
     if (!this.canAfford(buildCost(id))) return "cost";
     return null;
   }
@@ -305,21 +318,26 @@ export class World implements Host {
   build(id: BuildId, x: number, y: number, dir: Dir, recipe: Recipe | null = null): Entity | null {
     if (this.buildError(id, x, y)) return null;
     if (recipe && !this.isRecipeUnlocked(recipe)) recipe = null;
-    const e = this.place(entityTypeOf(id), x, y, dir, recipe);
+    const e = this.place(entityTypeOf(id), x, y, dir, recipe, layerOf(id));
     if (!e) return null;
-    if (e instanceof Belt) e.level = BELT_LEVEL[id] ?? 1;
+    if (e instanceof Belt) e.level = id === "bridge" ? this.bestBeltLevel() : (BELT_LEVEL[id] ?? 1);
     this.pay(buildCost(id));
     return e;
   }
 
+  /** Schnellste freigeschaltete Bandstufe (Hochbaender laufen so schnell). */
+  bestBeltLevel(): 1 | 2 | 3 {
+    return this.isUnlocked("belt_mk3") ? 3 : this.isUnlocked("belt_mk2") ? 2 : 1;
+  }
+
   /** Abreissen wie der Spieler: Baukosten gehen zurueck ins Lager. */
-  demolish(x: number, y: number): Entity | undefined {
-    const wreck = this.entityAt(x, y);
+  demolish(x: number, y: number, layer = 0): Entity | undefined {
+    const wreck = this.entityAt(x, y, layer);
     if (wreck?.type === "wreck") {
       this.salvage(wreck);
       return wreck;
     }
-    const e = this.remove(x, y);
+    const e = this.remove(x, y, layer);
     if (e) this.refund(buildCost(buildIdOf(e)));
     return e;
   }
@@ -327,7 +345,7 @@ export class World implements Host {
   /** Band auf eine hoehere Stufe bringen (zahlt die Differenz, gibt das alte zurueck). */
   upgradeBelt(e: Entity, id: BuildId): boolean {
     const level = BELT_LEVEL[id];
-    if (!(e instanceof Belt) || !level || e.level >= level || !this.isUnlocked(id)) return false;
+    if (!(e instanceof Belt) || e.layer !== 0 || !level || e.level >= level || !this.isUnlocked(id)) return false;
     const cost = buildCost(id);
     if (!this.canAfford(cost)) return false;
     this.refund(buildCost(buildIdOf(e)));
@@ -467,8 +485,8 @@ export class World implements Host {
     return loot;
   }
 
-  place(type: EntityType, x: number, y: number, dir: Dir, recipe: Recipe | null = null): Entity | null {
-    if (!this.canPlace(type, x, y)) return null;
+  place(type: EntityType, x: number, y: number, dir: Dir, recipe: Recipe | null = null, layer: 0 | 1 = 0): Entity | null {
+    if (!this.canPlace(type, x, y, layer)) return null;
     const id = this.nextId++;
     let e: Entity;
     switch (type) {
@@ -541,19 +559,28 @@ export class World implements Host {
         e = t;
         break;
       }
+      case "ramp": {
+        // Kommt von hinten ein Hochband an, fuehrt die Rampe hinunter.
+        const r = new Ramp(id, x, y, dir);
+        const back = this.entityAt(x - DX[dir], y - DY[dir], 1);
+        r.up = !(back instanceof Conveyor && back.outputsTo(x, y, 1));
+        e = r;
+        break;
+      }
     }
+    e.layer = layer;
     this.entities.set(id, e);
-    this.grid.set(tileKey(x, y), e);
+    for (const l of slotsOf(e)) this.grid.set(slotKey(x, y, l), e);
     this.reveal(x, y, REVEAL_RADIUS[type] ?? REVEAL_DEFAULT);
     this.version++;
     return e;
   }
 
-  remove(x: number, y: number): Entity | undefined {
-    const e = this.entityAt(x, y);
+  remove(x: number, y: number, layer = 0): Entity | undefined {
+    const e = this.entityAt(x, y, layer);
     if (!e) return undefined;
     this.entities.delete(e.id);
-    this.grid.delete(tileKey(x, y));
+    for (const l of slotsOf(e)) this.grid.delete(slotKey(x, y, l));
     this.hazards.damage.delete(e.id);
     this.version++;
     return e;
@@ -569,6 +596,12 @@ export class World implements Host {
       if (e instanceof Tunnel && e.dir === dir) return !e.exit && !e.partner(this);
     }
     return false;
+  }
+
+  /** Rampe zwischen hinauf und hinunter umschalten. */
+  toggleRamp(r: Ramp) {
+    r.up = !r.up;
+    this.version++;
   }
 
   /** Tunnel zwischen Eingang und Ausgang umschalten. */
@@ -685,8 +718,8 @@ export class World implements Host {
    */
   beltInputSide(belt: Belt): Dir {
     const feeds = (side: Dir) => {
-      const n = this.entityAt(belt.x + DX[side], belt.y + DY[side]);
-      return !!n && n.outputsTo(belt.x, belt.y);
+      const n = this.entityAt(belt.x + DX[side], belt.y + DY[side], belt.layer);
+      return !!n && n.outputsTo(belt.x, belt.y, belt.layer);
     };
     const back = opposite(belt.dir);
     if (feeds(back)) return back;
@@ -707,13 +740,24 @@ export const REVEAL_RADIUS: Partial<Record<EntityType, number>> = { hub: 24, rad
 export const cellKey = (cx: number, cy: number) => (cx + 0x8000) * 0x10000 + (cy + 0x8000);
 export const cellOf = (key: number): [number, number] => [Math.floor(key / 0x10000) - 0x8000, (key % 0x10000) - 0x8000];
 
-/** Entity-Typ, den eine Bau-Id erzeugt (schnelle Baender sind Baender). */
+/** Entity-Typ, den eine Bau-Id erzeugt (schnelle Baender und Hochbaender sind Baender). */
 export function entityTypeOf(id: BuildId): EntityType {
-  return BELT_LEVEL[id] ? "belt" : (id as EntityType);
+  return BELT_LEVEL[id] || id === "bridge" ? "belt" : (id as EntityType);
 }
+
+/** Ebene, auf der eine Bau-Id entsteht. */
+export function layerOf(id: BuildId): 0 | 1 {
+  return id === "bridge" ? 1 : 0;
+}
+
+const slotKey = (x: number, y: number, layer: number) => (layer ? `${x},${y},${layer}` : tileKey(x, y));
+
+/** Belegte Ebenen eines Gebaeudes: Rampen belegen beide. */
+const slotsOf = (e: Entity): number[] => (e.type === "ramp" ? [0, 1] : [e.layer]);
 
 /** Bau-Id eines vorhandenen Gebaeudes (fuer Kosten beim Abreissen). */
 export function buildIdOf(e: Entity): BuildId {
+  if (e instanceof Belt && e.layer === 1) return "bridge";
   if (e instanceof Belt) return e.level === 3 ? "belt_mk3" : e.level === 2 ? "belt_mk2" : "belt";
   return e.type;
 }
