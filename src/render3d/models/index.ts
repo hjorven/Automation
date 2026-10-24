@@ -25,3 +25,4 @@ export {
   storageModel,
 } from "./production";
 export { accumulatorModel, solarModel } from "./power";
+export { radarModel } from "./explore";

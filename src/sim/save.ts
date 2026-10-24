@@ -6,7 +6,8 @@ import { recipeById } from "./recipes";
 import { RESEARCH } from "./research";
 import type { Order } from "./orders";
 import { worldGen } from "./terrain";
-import { World } from "./world";
+import { World, cellKey, cellOf } from "./world";
+import { upgradeById, type UpgradeId } from "./upgrades";
 
 /**
  * Versioniertes Spielstand-Format. Bei Aenderungen SAVE_VERSION erhoehen und
@@ -76,6 +77,12 @@ export interface SaveData {
   ordersDone?: number;
   /** Weltgenerator (seit v5): 1 = alte Welt ohne Biome, 2 = Biome. */
   gen: number;
+  /** Erkundete Nebel-Zellen als flache Liste [x0, y0, x1, y1, ...]; fehlt sie, zaehlt die Umgebung der Gebaeude. */
+  explored?: number[];
+  /** Endlos-Upgrades: Id und Stufe (optional, fehlt in aelteren Staenden). */
+  upgrades?: [string, number][];
+  /** Bester Fabrikwert pro Minute (optional). */
+  bestScore?: number;
   entities: SavedEntity[];
 }
 
@@ -87,6 +94,7 @@ export function serialize(world: World): SaveData {
     tick: world.tick,
     tier: world.tier,
     gen: world.gen.version,
+    explored: [...world.explored].flatMap(cellOf),
     storage: [...world.storage],
     delivered: [...world.delivered],
     research: [...world.research],
@@ -94,6 +102,8 @@ export function serialize(world: World): SaveData {
     orders: world.orders.map((o) => ({ ...o, reward: o.reward.map((r) => ({ ...r })) })),
     orderSeq: world.orderSeq,
     ordersDone: world.ordersDone,
+    upgrades: [...world.upgrades],
+    bestScore: world.bestScore,
     entities,
   };
 }
@@ -143,6 +153,7 @@ function saveEntity(e: Entity): SavedEntity {
         crafting: e.crafting,
       };
     case "hub":
+    case "radar":
       return base;
   }
 }
@@ -152,6 +163,7 @@ export function deserialize(raw: unknown): World {
   const data = migrate(raw);
   const w = new World();
   w.gen = worldGen(data.gen);
+  w.fog = true;
   w.tick = data.tick;
   w.tier = Math.min(MAX_TIER, Math.max(0, Math.floor(num(data.tier))));
   for (const [item, n] of data.storage) {
@@ -170,6 +182,14 @@ export function deserialize(raw: unknown): World {
     w.orders.push({ item: o.item, count: Math.floor(o.count), reward, ...(typeof o.recipe === "string" && recipeById(o.recipe) ? { recipe: o.recipe } : {}) });
   }
   w.fillOrders();
+  const cells = Array.isArray(data.explored) ? data.explored : [];
+  for (let i = 0; i + 1 < cells.length; i += 2) {
+    if (Number.isInteger(cells[i]) && Number.isInteger(cells[i + 1])) w.explored.add(cellKey(cells[i], cells[i + 1]));
+  }
+  for (const [id, level] of Array.isArray(data.upgrades) ? data.upgrades : []) {
+    if (upgradeById(id)) w.setUpgradeLevel(id as UpgradeId, Math.max(0, Math.floor(num(level))));
+  }
+  w.bestScore = Math.max(0, num(data.bestScore));
 
   for (const s of data.entities) {
     if (!isType(s.type) || !isDir(s.dir) || !Number.isInteger(s.x) || !Number.isInteger(s.y)) continue;
@@ -237,6 +257,7 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
       e.crafting = !!s.crafting && !!e.recipe;
       break;
     case "hub":
+    case "radar":
       break;
   }
 }
@@ -315,6 +336,7 @@ const TYPES = new Set<string>([
   "sorter",
   "solar",
   "accumulator",
+  "radar",
 ]);
 const isType = (v: unknown): v is EntityType => typeof v === "string" && TYPES.has(v);
 const isItem = (v: unknown): v is ItemId => typeof v === "string" && ITEMS.has(v);

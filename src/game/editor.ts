@@ -3,6 +3,7 @@ import { Machine, type Entity } from "../sim/entities";
 import type { ItemId } from "../sim/items";
 import { BELT_LEVEL, type BuildId } from "../sim/progression";
 import type { Recipe } from "../sim/recipes";
+import type { UpgradeId } from "../sim/upgrades";
 import { entityTypeOf, type BuildError, type World } from "../sim/world";
 
 export type Tool = "hand" | "delete" | BuildId;
@@ -135,6 +136,11 @@ export class Editor {
     if (this.world.discardOrder(index)) this.emit();
   }
 
+  buyUpgrade(id: UpgradeId) {
+    this.world.buyUpgrade(id);
+    this.emit();
+  }
+
   /** `tap`: kurzes Antippen statt Ziehen (dreht ein vorhandenes gleiches Gebaeude). */
   strokeBegin(x: number, y: number, tap: boolean) {
     this.stroke = { lastX: x, lastY: y, placed: new Set(), tap };
@@ -206,8 +212,8 @@ export class Editor {
     const recipe = tool === "assembler" ? this.assemblerRecipe : null;
     const error = w.buildError(tool, x, y);
     if (error) {
-      // Belegte Felder sind normal; fehlendes Erz nur beim Antippen melden, nicht beim Ziehen.
-      if (error !== "blocked" && (error !== "ore" || moveDir === null)) this.fail(error);
+      // Belegte Felder sind normal; fehlendes Erz und Nebel nur beim Antippen melden, nicht beim Ziehen.
+      if (error !== "blocked" && ((error !== "ore" && error !== "fog") || moveDir === null)) this.fail(error);
       return;
     }
     const e = w.build(tool, x, y, this.rotation, recipe);

@@ -11,6 +11,7 @@ import {
   Machine,
   Merger,
   Solar,
+  Radar,
   Sorter,
   Splitter,
   Storage,
@@ -40,11 +41,13 @@ import { ALT_RECIPES, recipeById, recipesFor, type ItemStack, type Recipe } from
 import { RESEARCH, researchById, researchForRecipe, totalBonus, type Bonus } from "./research";
 import { ORDER_SLOTS, makeOrder, type Order } from "./orders";
 import { DEFAULT_GEN, type WorldGen } from "./terrain";
+import { UPGRADES, upgradeById, upgradeCost, upgradeFactor, type UpgradeId } from "./upgrades";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
 export type BuildError =
   | "blocked" // Feld belegt
   | "ore" // Bohrer/Pumpe ohne passenden Rohstoff darunter
+  | "fog" // noch nicht erkundet
   | "water" // Feld liegt im Wasser
   | "lava" // Feld liegt in Lava (Vulkan)
   | "cliff" // Fels (Berge)
@@ -58,6 +61,12 @@ export class World implements Host {
   tick = 0;
   /** Weltgenerator: Erz, Hindernisse, Biome und Reinheit je Feld. */
   gen: WorldGen = DEFAULT_GEN;
+  /** Nebel des Krieges an? Eine nackte `new World()` (Tests) hat keinen. */
+  fog = false;
+  /** Erkundete Zellen (je FOG_CELL x FOG_CELL Felder), siehe `cellKey`. */
+  readonly explored = new Set<number>();
+  /** Steigt, sobald sich der Nebel lichtet (fuer das Neuzeichnen). */
+  exploredVersion = 0;
   /** Steigt bei jeder Aenderung am Gebaeudebestand (fuer das Neuzeichnen). */
   version = 0;
   /** Hub-Stufe (Index in TIERS). */
@@ -92,6 +101,13 @@ export class World implements Host {
   powerFactor = 1;
   powerLoad = 0;
 
+  /** Erreichte Stufe je Endlos-Upgrade (fehlt = 0). */
+  readonly upgrades = new Map<UpgradeId, number>();
+  miningSpeed = 1;
+  craftingSpeed = 1;
+  /** Bester je erreichter Fabrikwert pro Minute (fuer das Ranking). */
+  bestScore = 0;
+
   readonly entities = new Map<number, Entity>();
   private readonly grid = new Map<string, Entity>();
   private nextId = 1;
@@ -99,6 +115,7 @@ export class World implements Host {
   static createDefault(gen: WorldGen = DEFAULT_GEN): World {
     const w = new World();
     w.gen = gen;
+    w.fog = true;
     w.place("hub", 0, 0, 0);
     w.fillOrders();
     return w;
@@ -251,6 +268,7 @@ export class World implements Host {
   /** Warum `build` an dieser Stelle scheitern wuerde, sonst null. */
   buildError(id: BuildId, x: number, y: number): BuildError | null {
     if (!this.isUnlocked(id)) return "locked";
+    if (!this.isExplored(x, y)) return "fog";
     const type = entityTypeOf(id);
     if (!this.canPlace(type, x, y)) return this.grid.has(tileKey(x, y)) ? "blocked" : "ore";
     // Nur fuer den Spieler: alte Spielstaende mit Gebaeuden auf heutigen Seen laden weiter.
@@ -303,6 +321,41 @@ export class World implements Host {
     return up;
   }
 
+  upgradeLevel(id: UpgradeId): number {
+    return this.upgrades.get(id) ?? 0;
+  }
+
+  /** Endlos-Upgrades gibt es erst nach der letzten Hub-Stufe. */
+  get upgradesUnlocked(): boolean {
+    return this.tier >= MAX_TIER;
+  }
+
+  /** Naechste Stufe eines Endlos-Upgrades kaufen. */
+  buyUpgrade(id: UpgradeId): boolean {
+    const u = upgradeById(id);
+    if (!u || !this.upgradesUnlocked) return false;
+    const cost = upgradeCost(u, this.upgradeLevel(id));
+    if (!this.canAfford(cost)) return false;
+    this.pay(cost);
+    this.setUpgradeLevel(id, this.upgradeLevel(id) + 1);
+    return true;
+  }
+
+  /** Stufe setzen und die Multiplikatoren neu berechnen (auch beim Laden). */
+  setUpgradeLevel(id: UpgradeId, level: number) {
+    if (level > 0) this.upgrades.set(id, level);
+    else this.upgrades.delete(id);
+    const f = (k: UpgradeId) => upgradeFactor(UPGRADES.find((u) => u.id === k)!, this.upgradeLevel(k));
+    this.miningSpeed = f("mining");
+    this.craftingSpeed = f("crafting");
+    this.storageVersion++;
+  }
+
+  /** Strom-Multiplikator fuer Hub und Kraftwerke. */
+  get powerBonus(): number {
+    return upgradeFactor(UPGRADES.find((u) => u.id === "power")!, this.upgradeLevel("power"));
+  }
+
   /** Naechste Hub-Stufe kaufen. */
   upgradeHub(): boolean {
     const next = TIERS[this.tier + 1];
@@ -326,6 +379,32 @@ export class World implements Host {
   private refund(cost: readonly ItemStack[]) {
     for (const s of cost) this.storage.set(s.item, (this.storage.get(s.item) ?? 0) + s.count);
     if (cost.length) this.storageVersion++;
+  }
+
+  isExplored(x: number, y: number): boolean {
+    return !this.fog || this.explored.has(cellKey(Math.floor(x / FOG_CELL), Math.floor(y / FOG_CELL)));
+  }
+
+  /** Lichtet den Nebel im Kreis `r` um Feld (x, y). */
+  reveal(x: number, y: number, r: number) {
+    const c0x = Math.floor((x - r) / FOG_CELL);
+    const c1x = Math.floor((x + r) / FOG_CELL);
+    const c0y = Math.floor((y - r) / FOG_CELL);
+    const c1y = Math.floor((y + r) / FOG_CELL);
+    const cx = x + 0.5;
+    const cy = y + 0.5;
+    for (let gy = c0y; gy <= c1y; gy++) {
+      for (let gx = c0x; gx <= c1x; gx++) {
+        // Naechster Punkt der Zelle zum Mittelpunkt.
+        const dx = Math.max(gx * FOG_CELL - cx, 0, cx - (gx + 1) * FOG_CELL);
+        const dy = Math.max(gy * FOG_CELL - cy, 0, cy - (gy + 1) * FOG_CELL);
+        if (dx * dx + dy * dy > r * r) continue;
+        const key = cellKey(gx, gy);
+        if (this.explored.has(key)) continue;
+        this.explored.add(key);
+        this.exploredVersion++;
+      }
+    }
   }
 
   place(type: EntityType, x: number, y: number, dir: Dir, recipe: Recipe | null = null): Entity | null {
@@ -368,6 +447,9 @@ export class World implements Host {
       case "sorter":
         e = new Sorter(id, x, y, dir);
         break;
+      case "radar":
+        e = new Radar(id, x, y, dir);
+        break;
       case "generator_coal":
       case "generator_fuel":
         e = new Generator(id, x, y, dir, type);
@@ -387,6 +469,7 @@ export class World implements Host {
     }
     this.entities.set(id, e);
     this.grid.set(tileKey(x, y), e);
+    this.reveal(x, y, REVEAL_RADIUS[type] ?? REVEAL_DEFAULT);
     this.version++;
     return e;
   }
@@ -462,6 +545,11 @@ export class World implements Host {
     if (p.night) demand *= NIGHT_DEMAND;
     solar *= sunlight(this.tick);
     if (hub) fixed += HUB_POWER + this.bonus.hubPower;
+    // Endlos-Upgrade Netzausbau verstaerkt alle Erzeuger.
+    const boost = this.powerBonus;
+    fixed *= boost;
+    solar *= boost;
+    gen *= boost;
     const renewable = fixed + solar;
 
     p.demand = demand;
@@ -531,6 +619,15 @@ export class World implements Host {
     return back;
   }
 }
+
+/** Kantenlaenge einer Nebel-Zelle in Feldern. */
+export const FOG_CELL = 4;
+/** So weit lichtet jedes Gebaeude den Nebel; Hub und Radar deutlich weiter. */
+const REVEAL_DEFAULT = 6;
+export const REVEAL_RADIUS: Partial<Record<EntityType, number>> = { hub: 24, radar: 44 };
+
+export const cellKey = (cx: number, cy: number) => (cx + 0x8000) * 0x10000 + (cy + 0x8000);
+export const cellOf = (key: number): [number, number] => [Math.floor(key / 0x10000) - 0x8000, (key % 0x10000) - 0x8000];
 
 /** Entity-Typ, den eine Bau-Id erzeugt (schnelle Baender sind Baender). */
 export function entityTypeOf(id: BuildId): EntityType {

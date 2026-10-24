@@ -14,6 +14,9 @@ export interface Host {
   readonly powerFactor: number;
   /** Auslastung der Kraftwerke (0..1): so schnell verbrennen sie Brennstoff. */
   readonly powerLoad: number;
+  /** Tempo-Multiplikatoren aus den Endlos-Upgrades (1 = normal). */
+  readonly miningSpeed: number;
+  readonly craftingSpeed: number;
   recipeUnlocked(r: Recipe): boolean;
   /** Tempo-Faktor fuer Bohrer und Pumpen aus der Forschung (1 = normal). */
   readonly extractBoost?: number;
@@ -34,7 +37,8 @@ export type EntityType =
   | "storage"
   | "sorter"
   | "solar"
-  | "accumulator";
+  | "accumulator"
+  | "radar";
 
 abstract class EntityBase {
   abstract readonly type: EntityType;
@@ -177,7 +181,7 @@ export class Extractor extends EntityBase {
   }
 
   update(host: Host): void {
-    if (this.buffer === null && (this.timer += host.powerFactor * (host.extractBoost ?? 1)) >= this.interval) {
+    if (this.buffer === null && (this.timer += host.powerFactor * host.miningSpeed * (host.extractBoost ?? 1)) >= this.interval) {
       this.timer -= this.interval;
       this.buffer = this.ore;
     }
@@ -238,7 +242,7 @@ export class Machine extends EntityBase {
       this.crafting = true;
       this.progress = 0;
     }
-    if (r && this.crafting && (this.progress += host.powerFactor) >= r.ticks) {
+    if (r && this.crafting && (this.progress += host.powerFactor * host.craftingSpeed) >= r.ticks) {
       for (const s of r.outputs) this.output.set(s.item, (this.output.get(s.item) ?? 0) + s.count);
       this.crafting = false;
     }
@@ -397,6 +401,19 @@ export class Tunnel extends EntityBase {
   }
 }
 
+/** Radarturm: lichtet beim Bau den Nebel in weitem Umkreis, sonst passiv. */
+export class Radar extends EntityBase {
+  readonly type = "radar";
+
+  accept(): boolean {
+    return false;
+  }
+
+  outputsTo(): boolean {
+    return false;
+  }
+}
+
 /** Lagerkiste: nimmt von hinten und den Seiten an, gibt der Reihe nach vorne aus. */
 export class Storage extends EntityBase {
   readonly type = "storage";
@@ -550,7 +567,8 @@ export type Entity =
   | Sorter
   | Generator
   | Solar
-  | Accumulator;
+  | Accumulator
+  | Radar;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

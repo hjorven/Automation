@@ -39,7 +39,7 @@ export const TIERS: readonly Tier[] = [
   {
     name: "Fertigung",
     cost: [s("iron_plate", 20), s("copper_plate", 10)],
-    buildings: ["assembler"],
+    buildings: ["assembler", "radar"],
     recipes: ["gear", "wire"],
   },
   {
@@ -122,6 +122,7 @@ export const NIGHT_DEMAND = 1.25;
 export const BUILD_COSTS: Partial<Record<BuildId, ItemStack[]>> = {
   hub: [s("iron_plate", 20), s("copper_plate", 10)],
   assembler: [s("iron_plate", 10), s("copper_plate", 5)],
+  radar: [s("iron_plate", 30), s("copper_plate", 20), s("gear", 10)],
   splitter: [s("iron_plate", 2), s("gear", 2)],
   merger: [s("iron_plate", 2), s("gear", 2)],
   tunnel: [s("iron_plate", 4), s("gear", 2)],
