@@ -20,6 +20,7 @@ export const ITEM_COLORS: Record<ItemId, number> = {
   sulfur: 0xe2d13a,
   crude_oil: 0x1d1b22,
   bauxite: 0xb0603a,
+  water: 0x3f8fd9,
   concrete: 0xbfbcb4,
   reinforced_plate: 0x9aa6b4,
   rotor: 0x7a8794,

@@ -22,6 +22,7 @@ import {
   type EntityType,
   type Host,
 } from "./entities";
+import { FluidCarrier, FluidSystem } from "./fluids";
 import type { ItemId } from "./items";
 import {
   ACCUMULATOR,
@@ -55,6 +56,7 @@ export type BuildError =
   | "water" // Feld liegt im Wasser
   | "lava" // Feld liegt in Lava (Vulkan)
   | "cliff" // Fels (Berge)
+  | "dry" // Wasserpumpe nicht auf Wasser
   | "locked"
   | "cost";
 
@@ -124,6 +126,8 @@ export class World implements Host {
   readonly entities = new Map<number, Entity>();
   private readonly grid = new Map<string, Entity>();
   private nextId = 1;
+  /** Rohrnetze (werden bei Bauaenderungen neu ermittelt). */
+  readonly fluids = new FluidSystem(this);
 
   static createDefault(gen: WorldGen = DEFAULT_GEN): World {
     const w = new World();
@@ -160,6 +164,7 @@ export class World implements Host {
 
   canPlace(type: EntityType, x: number, y: number): boolean {
     if (this.grid.has(tileKey(x, y))) return false;
+    if (type === "water_pump") return this.gen.obstacleAt(x, y) === "water";
     const ore = this.gen.oreAt(x, y);
     if (type === "pump") return ore === "crude_oil";
     if (type === "extractor" || type === "extractor_mk2" || type === "extractor_mk3") {
@@ -283,12 +288,15 @@ export class World implements Host {
     if (!this.isUnlocked(id)) return "locked";
     if (!this.isExplored(x, y)) return "fog";
     const type = entityTypeOf(id);
-    if (!this.canPlace(type, x, y)) return this.grid.has(tileKey(x, y)) ? "blocked" : "ore";
+    if (!this.canPlace(type, x, y)) {
+      if (this.grid.has(tileKey(x, y))) return "blocked";
+      return type === "water_pump" ? "dry" : "ore";
+    }
     // Nester nur fuer den Spieler sperren (wie Wasser), damit alte Spielstaende weiter laden.
     if (this.hazards.nestAt(x, y)) return "blocked";
     // Nur fuer den Spieler: alte Spielstaende mit Gebaeuden auf heutigen Seen laden weiter.
     const obstacle = this.gen.obstacleAt(x, y);
-    if (obstacle) return obstacle;
+    if (obstacle && !(obstacle === "water" && type === "water_pump")) return obstacle;
     if (!this.canAfford(buildCost(id))) return "cost";
     return null;
   }
@@ -473,6 +481,14 @@ export class World implements Host {
       case "pump":
         e = new Extractor(id, x, y, dir, this.gen.oreAt(x, y)!, type, this.gen.purityAt(x, y));
         break;
+      case "water_pump":
+        e = new Extractor(id, x, y, dir, "water", type);
+        break;
+      case "pipe":
+      case "pipe_pump":
+      case "fluid_tank":
+        e = new FluidCarrier(id, x, y, dir, type);
+        break;
       case "smelter":
       case "assembler":
       case "foundry":
@@ -507,6 +523,7 @@ export class World implements Host {
         break;
       case "generator_coal":
       case "generator_fuel":
+      case "generator_steam":
         e = new Generator(id, x, y, dir, type);
         break;
       case "solar":
@@ -576,6 +593,7 @@ export class World implements Host {
   step() {
     this.tick++;
     this.updatePower();
+    this.fluids.tick(this.powerFactor);
     for (const e of this.entities.values()) e.update(this);
     this.hazards.update(this);
   }

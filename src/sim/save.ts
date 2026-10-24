@@ -47,6 +47,11 @@ export interface SavedEntity {
   burnLeft?: number;
   /** Batteriespeicher: Ladung in MJ */
   stored?: number;
+  /** Dampfkraftwerk */
+  water?: number;
+  /** Rohr, Tank, Rohrpumpe */
+  fluid?: ItemId | null;
+  amount?: number;
   /** Tunnel */
   exit?: boolean;
   transit?: [ItemId, number][];
@@ -106,6 +111,7 @@ export interface SavedHazards {
 }
 
 export function serialize(world: World): SaveData {
+  world.fluids.flush();
   const entities = [...world.entities.values()].sort((a, b) => a.id - b.id).map(saveEntity);
   return {
     version: SAVE_VERSION,
@@ -197,7 +203,12 @@ function saveEntity(e: Entity): SavedEntity {
     case "extractor_mk2":
     case "extractor_mk3":
     case "pump":
+    case "water_pump":
       return { ...base, timer: e.timer, buffer: e.buffer };
+    case "pipe":
+    case "pipe_pump":
+    case "fluid_tank":
+      return { ...base, fluid: e.fluid, amount: e.amount };
     case "storage":
       return { ...base, queue: [...e.queue] };
     case "sorter":
@@ -210,6 +221,8 @@ function saveEntity(e: Entity): SavedEntity {
     case "solar":
     case "turret":
       return base;
+    case "generator_steam":
+      return { ...base, fuel: e.fuel, burnLeft: e.burnLeft, water: e.water };
     case "splitter":
       return { ...base, buffer: e.buffer, next: e.next };
     case "merger":
@@ -299,8 +312,15 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
     case "extractor_mk2":
     case "extractor_mk3":
     case "pump":
+    case "water_pump":
       e.timer = num(s.timer);
       e.buffer = item(s.buffer);
+      break;
+    case "pipe":
+    case "pipe_pump":
+    case "fluid_tank":
+      e.fluid = item(s.fluid);
+      e.amount = e.fluid ? Math.min(e.capacity, Math.max(0, num(s.amount))) : 0;
       break;
     case "storage":
       for (const i of s.queue ?? []) if (isItem(i) && e.queue.length < Storage.CAPACITY) e.queue.push(i);
@@ -312,8 +332,10 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
       break;
     case "generator_coal":
     case "generator_fuel":
+    case "generator_steam":
       e.fuel = Math.min(Generator.FUEL_CAPACITY, Math.max(0, Math.floor(num(s.fuel))));
       e.burnLeft = Math.max(0, num(s.burnLeft));
+      e.water = Math.min(Generator.WATER_CAPACITY, Math.max(0, Math.floor(num(s.water))));
       break;
     case "accumulator":
       e.stored = Math.min(ACCUMULATOR.capacity, Math.max(0, num(s.stored)));
@@ -418,6 +440,11 @@ const TYPES = new Set<string>([
   "manufacturer",
   "generator_coal",
   "generator_fuel",
+  "generator_steam",
+  "water_pump",
+  "pipe",
+  "pipe_pump",
+  "fluid_tank",
   "hub",
   "splitter",
   "merger",

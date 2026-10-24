@@ -31,6 +31,7 @@ function findOre(ore: OreId): { x: number; y: number } {
 /** Stufe, ab der ein Item herstellbar (oder abbaubar) ist. */
 function itemTier(item: ItemId): number {
   if ((ORES as readonly string[]).includes(item)) return item === "crude_oil" ? buildingTier("pump") : 0;
+  if (item === "water") return buildingTier("water_pump");
   const tiers = RECIPES.filter((r) => r.outputs.some((o) => o.item === item)).map((r) =>
     Math.max(recipeTier(r.id), ...r.inputs.map((i) => itemTier(i.item))),
   );

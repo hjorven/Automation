@@ -3,7 +3,8 @@ import { DX, DY, opposite, rotateCCW, rotateCW, type Dir } from "./dir";
 import type { ItemId } from "./items";
 import { GENERATORS } from "./progression";
 import { smeltingRecipeFor, type MachineKind, type Recipe } from "./recipes";
-import { PURITY_RATE, type OreId, type Purity } from "./terrain";
+import { PURITY_RATE, type Purity } from "./terrain";
+import type { FluidCarrier, PipeKind } from "./fluids";
 
 /** Was ein Gebaeude von der Welt braucht (vermeidet zyklische Imports). */
 export interface Host {
@@ -22,8 +23,8 @@ export interface Host {
   readonly extractBoost?: number;
 }
 
-export type ExtractorKind = "extractor" | "extractor_mk2" | "extractor_mk3" | "pump";
-export type GeneratorKind = "generator_coal" | "generator_fuel";
+export type ExtractorKind = "extractor" | "extractor_mk2" | "extractor_mk3" | "pump" | "water_pump";
+export type GeneratorKind = "generator_coal" | "generator_fuel" | "generator_steam";
 
 export type EntityType =
   | "belt"
@@ -40,9 +41,10 @@ export type EntityType =
   | "accumulator"
   | "radar"
   | "wreck"
-  | "turret";
+  | "turret"
+  | PipeKind;
 
-abstract class EntityBase {
+export abstract class EntityBase {
   abstract readonly type: EntityType;
 
   constructor(
@@ -158,7 +160,8 @@ export class Extractor extends EntityBase {
     x: number,
     y: number,
     dir: Dir,
-    readonly ore: OreId,
+    /** Gefoerderter Rohstoff (bei der Wasserpumpe: Wasser). */
+    readonly ore: ItemId,
     readonly type: ExtractorKind = "extractor",
     readonly purity: Purity = "normal",
   ) {
@@ -170,6 +173,7 @@ export class Extractor extends EntityBase {
    * Reine Vorkommen verdoppeln das Tempo, unreine halbieren es.
    */
   get interval(): number {
+    if (this.type === "water_pump") return EXTRACT_TICKS / 4;
     const k = this.type === "extractor_mk2" ? 2 : this.type === "extractor_mk3" ? 4 : 1;
     return EXTRACT_TICKS / k / PURITY_RATE[this.purity];
   }
@@ -491,10 +495,15 @@ export class Sorter extends EntityBase {
   }
 }
 
-/** Kraftwerk: verbrennt Kohle oder Treibstoff, so schnell wie Strom gebraucht wird. */
+/**
+ * Kraftwerk: verbrennt Kohle oder Treibstoff, so schnell wie Strom gebraucht
+ * wird. Das Dampfkraftwerk braucht zu jeder Einheit Kohle auch Wasser.
+ */
 export class Generator extends EntityBase {
   static readonly FUEL_CAPACITY = 10;
+  static readonly WATER_CAPACITY = 20;
   fuel = 0;
+  water = 0;
   /** Verbleibende Brenndauer der aktuellen Einheit (Ticks bei Volllast). */
   burnLeft = 0;
 
@@ -512,20 +521,35 @@ export class Generator extends EntityBase {
     return GENERATORS[this.type]!;
   }
 
+  /** Wasser je Einheit Brennstoff (0 = braucht keins). */
+  get waterNeed(): number {
+    return this.spec.water ?? 0;
+  }
+
+  private get canIgnite(): boolean {
+    return this.fuel > 0 && this.water >= this.waterNeed;
+  }
+
   /** Liefert gerade Strom. */
   get burning(): boolean {
-    return this.burnLeft > 0 || this.fuel > 0;
+    return this.burnLeft > 0 || this.canIgnite;
   }
 
   accept(item: ItemId): boolean {
+    if (item === "water" && this.waterNeed > 0) {
+      if (this.water >= Generator.WATER_CAPACITY) return false;
+      this.water++;
+      return true;
+    }
     if (item !== this.spec.fuel || this.fuel >= Generator.FUEL_CAPACITY) return false;
     this.fuel++;
     return true;
   }
 
   update(host: Host): void {
-    if (this.burnLeft <= 0 && this.fuel > 0 && host.powerLoad > 0) {
+    if (this.burnLeft <= 0 && this.canIgnite && host.powerLoad > 0) {
       this.fuel--;
+      this.water -= this.waterNeed;
       this.burnLeft += this.spec.burnTicks;
     }
     if (this.burnLeft > 0) this.burnLeft = Math.max(0, this.burnLeft - host.powerLoad);
@@ -610,7 +634,8 @@ export type Entity =
   | Accumulator
   | Radar
   | Wreck
-  | Turret;
+  | Turret
+  | FluidCarrier;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

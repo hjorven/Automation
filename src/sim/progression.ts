@@ -135,6 +135,11 @@ export const BUILD_COSTS: Partial<Record<BuildId, ItemStack[]>> = {
   foundry: [s("iron_plate", 10), s("gear", 6), s("circuit", 4)],
   belt_mk2: [s("steel", 1)],
   extractor_mk2: [s("steel", 4), s("gear", 4), s("circuit", 2)],
+  pipe: [s("steel", 1)],
+  water_pump: [s("steel", 6), s("gear", 4), s("circuit", 2)],
+  pipe_pump: [s("steel", 4), s("gear", 4), s("circuit", 4)],
+  fluid_tank: [s("steel", 10), s("concrete", 6)],
+  generator_steam: [s("steel", 12), s("concrete", 10), s("circuit", 6)],
   manufacturer: [s("reinforced_plate", 10), s("rotor", 6), s("concrete", 10)],
   pump: [s("steel", 10), s("motor", 2), s("concrete", 10)],
   refinery: [s("steel", 15), s("motor", 3), s("control_unit", 2)],
@@ -149,6 +154,8 @@ export const POWER_USE: Partial<Record<EntityType, number>> = {
   extractor_mk2: 10,
   extractor_mk3: 25,
   pump: 20,
+  water_pump: 6,
+  pipe_pump: 8,
   smelter: 4,
   assembler: 8,
   foundry: 16,
@@ -157,9 +164,13 @@ export const POWER_USE: Partial<Record<EntityType, number>> = {
   turret: 6,
 };
 
-/** Kraftwerke: Brennstoff, Leistung in MW und Brenndauer einer Einheit bei Volllast. */
-export const GENERATORS: Partial<Record<EntityType, { fuel: ItemId; power: number; burnTicks: number }>> = {
+/**
+ * Kraftwerke: Brennstoff, Leistung in MW, Brenndauer einer Einheit bei Volllast
+ * und (Dampf) Wasser je Einheit Brennstoff.
+ */
+export const GENERATORS: Partial<Record<EntityType, { fuel: ItemId; power: number; burnTicks: number; water?: number }>> = {
   generator_coal: { fuel: "coal", power: 75, burnTicks: 80 },
+  generator_steam: { fuel: "coal", power: 150, burnTicks: 80, water: 4 },
   generator_fuel: { fuel: "fuel", power: 150, burnTicks: 160 },
 };
 
