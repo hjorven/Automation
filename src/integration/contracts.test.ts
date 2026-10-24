@@ -6,10 +6,10 @@
 // Kommt ein Modell erst in einem spaeteren PR, die id in PENDING eintragen.
 import { describe, expect, it } from "vitest";
 import { ITEM_NAMES, ITEM_ORDER } from "../sim/items";
-import { BUILD_COSTS, TIERS } from "../sim/progression";
+import { BUILD_COSTS, TIERS, type BuildId } from "../sim/progression";
 import { RECIPES, recipeById } from "../sim/recipes";
 import { entityTypeOf } from "../sim/world";
-import { TOOL_NAMES } from "../ui/catalog";
+import { TOOL_NAMES, buildTools } from "../ui/catalog";
 import itemModelsSrc from "../render3d/models/items.ts?raw";
 import sceneSrc from "../render3d/scene-view.ts?raw";
 import terrainViewSrc from "../render3d/terrain.ts?raw";
@@ -24,7 +24,17 @@ const PENDING = {
 
 const cases = (code: string) => new Set([...code.matchAll(/case "([a-z0-9_]+)"/g)].map((m) => m[1]));
 
-const BUILD_IDS = [...new Set(TIERS.flatMap((t) => t.buildings))];
+/** Freischaltquellen neben den Stufen (z. B. Forschungsbaum), falls vorhanden. */
+interface Unlock {
+  buildings: readonly string[];
+  recipes: readonly string[];
+}
+const EXTRA_UNLOCKS: Unlock[] = Object.values(
+  import.meta.glob<{ RESEARCH?: readonly Unlock[] }>("../sim/research.ts", { eager: true }),
+).flatMap((m) => m.RESEARCH ?? []);
+const UNLOCKS: Unlock[] = [...TIERS, ...EXTRA_UNLOCKS];
+
+const BUILD_IDS = [...new Set(UNLOCKS.flatMap((u) => u.buildings))] as BuildId[];
 const ENTITY_TYPES = [...new Set(BUILD_IDS.map(entityTypeOf))];
 const ORES = (simTerrainSrc.match(/OreId = Extract<\s*ItemId,([^>]+)>/)?.[1] ?? "")
   .match(/"([a-z0-9_]+)"/g)!
@@ -36,6 +46,11 @@ const missing = (ids: Iterable<string>, has: (id: string) => boolean, pending: R
 describe("Integration: Gebaeude", () => {
   it("jedes baubare Gebaeude hat einen Namen in der UI", () => {
     expect(missing(BUILD_IDS, (id) => !!TOOL_NAMES[id], {})).toEqual([]);
+  });
+
+  it("jedes freischaltbare Gebaeude erscheint in der Werkzeugleiste", () => {
+    const tools = new Set<string>(buildTools());
+    expect(missing(BUILD_IDS, (id) => tools.has(id), {})).toEqual([]);
   });
 
   it("jedes Gebaeude ausser den Startgebaeuden hat Baukosten", () => {
@@ -73,8 +88,8 @@ describe("Integration: Items und Rezepte", () => {
     }
   });
 
-  it("Stufen schalten nur existierende Rezepte frei", () => {
-    const unknown = TIERS.flatMap((t) => t.recipes).filter((id) => !recipeById(id));
+  it("Stufen und Forschung schalten nur existierende Rezepte frei", () => {
+    const unknown = UNLOCKS.flatMap((u) => u.recipes).filter((id) => !recipeById(id));
     expect(unknown).toEqual([]);
   });
 });
