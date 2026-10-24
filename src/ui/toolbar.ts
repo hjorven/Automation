@@ -1,4 +1,4 @@
-import type { Editor, Tool } from "../game/editor";
+import { isBuildTool, type Editor, type Tool } from "../game/editor";
 import type { ThumbnailId } from "../render3d/thumbnails";
 import { TIERS, buildCost } from "../sim/progression";
 import { researchForBuilding } from "../sim/research";
@@ -76,6 +76,7 @@ export class Toolbar {
       `<div class="group"><span class="group-label">Werkzeug</span><div class="group-btns">` +
       this.button("hand") +
       this.button("delete") +
+      this.button("blueprint") +
       `<button data-action="rotate"><span class="key">R</span>${this.icon("rotate0", 'id="rotate-arrow"')}<span class="name">Drehen</span></button>` +
       `</div></div>`;
     for (const g of GROUP_ORDER) {
@@ -101,12 +102,12 @@ export class Toolbar {
     for (const btn of this.el.querySelectorAll<HTMLButtonElement>("[data-tool]")) {
       const tool = btn.dataset.tool as Tool;
       const tier = toolTier(tool);
-      const unlocked = tool === "hand" || tool === "delete" || w.isUnlocked(tool);
+      const unlocked = isBuildTool(tool) ? w.isUnlocked(tool) : tier <= w.tier;
       btn.classList.toggle("active", tool === this.editor.tool);
       btn.classList.toggle("locked", !unlocked);
       // Gesperrtes nur fuer die naechste Stufe zeigen, alles Spaetere bleibt Ueberraschung.
       btn.hidden = !unlocked && tier > w.tier + 1;
-      const cost = tool === "hand" || tool === "delete" ? [] : buildCost(tool);
+      const cost = isBuildTool(tool) ? buildCost(tool) : [];
       btn.classList.toggle("short", unlocked && cost.length > 0 && !w.canAfford(cost));
       btn.classList.toggle("new", this.fresh.has(tool));
     }
@@ -182,11 +183,11 @@ export class Toolbar {
     const w = this.editor.world;
     const tier = toolTier(tool);
     const key = TOOL_KEYS[tool];
-    const cost = tool === "hand" || tool === "delete" ? [] : buildCost(tool);
+    const cost = isBuildTool(tool) ? buildCost(tool) : [];
     let html =
       `<div class="tt-title"><span>${toolName(tool)}</span>${key ? `<span class="num muted">${key.toUpperCase()}</span>` : ""}</div>` +
       `<div class="tt-text">${TOOL_INFO[tool] ?? ""}</div>`;
-    const node = tool === "hand" || tool === "delete" ? undefined : researchForBuilding(tool);
+    const node = isBuildTool(tool) ? researchForBuilding(tool) : undefined;
     if (node && !w.research.has(node.id)) {
       html += `<div class="tt-lock">Gesperrt: Forschung „${node.name}“ (ab Stufe ${node.tier})</div>`;
     } else if (tier > w.tier) {
@@ -194,7 +195,7 @@ export class Toolbar {
     }
     html += cost.length
       ? `<div class="tt-cost">${costChips(cost, w.storage)}</div>`
-      : tool !== "hand" && tool !== "delete"
+      : isBuildTool(tool)
         ? `<div class="tt-cost"><span class="chip have">kostenlos</span></div>`
         : "";
     this.tip.innerHTML = html;

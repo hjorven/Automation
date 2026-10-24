@@ -1431,3 +1431,76 @@ button.danger {
     grid-column: 1 / -1;
   }
 }
+
+/* ---------- Blaupausen ---------- */
+
+#bpbar {
+  bottom: calc(var(--safe-bottom) + 104px);
+  left: 50%;
+  transform: translateX(-50%);
+  width: min(760px, calc(100vw - 24px));
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 12px;
+  padding: 10px 12px;
+}
+#bpbar .bp-info {
+  flex: 1 1 220px;
+  min-width: 0;
+}
+.bp-title {
+  font-weight: 600;
+  font-size: 15px;
+}
+.bp-cost {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+.bp-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.bp-actions button {
+  min-height: 44px;
+  padding: 0 14px;
+}
+.bp-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 10px;
+}
+.bp-card {
+  display: grid;
+  gap: 6px;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+}
+.bp-card .bp-name {
+  font-weight: 600;
+  font-size: 15px;
+}
+.bp-card .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+#bp-code {
+  width: 100%;
+  min-height: 70px;
+  box-sizing: border-box;
+  font: 12px var(--mono);
+  color: var(--text);
+  background: rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--edge);
+  border-radius: var(--radius-sm);
+  padding: 8px;
+  -webkit-user-select: text;
+  user-select: text;
+  touch-action: auto;
+}

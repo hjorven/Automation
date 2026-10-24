@@ -11,8 +11,9 @@ import { byId, costChips, dot, fmt, itemName, recipeHtml } from "./dom";
 import { WHY_TEXT, type Efficiency } from "./efficiency";
 import { tierTrack } from "./panel";
 import { BUCKETS, type DeliveryStats } from "./stats";
+import type { BlueprintTab } from "./blueprint-tab";
 
-export type OverviewTab = "tiers" | "research" | "orders" | "upgrades" | "inventory" | "stats";
+export type OverviewTab = "tiers" | "research" | "orders" | "upgrades" | "inventory" | "stats" | "blueprints";
 
 const TABS: { id: OverviewTab; label: string }[] = [
   { id: "tiers", label: "Stufen" },
@@ -21,6 +22,7 @@ const TABS: { id: OverviewTab; label: string }[] = [
   { id: "upgrades", label: "Upgrades" },
   { id: "inventory", label: "Lager" },
   { id: "stats", label: "Statistik" },
+  { id: "blueprints", label: "Blaupausen" },
 ];
 
 /** Grosser Bildschirm mit Reitern: alle Stufen, Hub-Lager, Lieferstatistik. */
@@ -29,6 +31,8 @@ export class Overview {
   private readonly scrim = byId("scrim");
   private tab: OverviewTab = "tiers";
   private bodyKey = "";
+  /** Reiter "Blaupausen" (eigene Datei, wird nach dem Bau gesetzt). */
+  blueprints: BlueprintTab | null = null;
 
   constructor(
     private readonly editor: Editor,
@@ -71,12 +75,17 @@ export class Overview {
     const w = this.editor.world;
     const body = this.el.querySelector<HTMLElement>(".s-body")!;
     // Stufen-Reiter enthaelt Knoepfe: nur neu bauen, wenn sich etwas aendert.
-    const key = `${this.tab}|${w.storageVersion}|${w.tier}|${this.tab === "stats" ? Math.floor(performance.now() / 1000) : ""}`;
+    const key =
+      this.tab === "blueprints"
+        ? `bp|${this.blueprints?.key()}`
+        : `${this.tab}|${w.storageVersion}|${w.tier}|${this.tab === "stats" ? Math.floor(performance.now() / 1000) : ""}`;
     if (key === this.bodyKey) return;
     this.bodyKey = key;
     const scroll = body.scrollTop;
     body.innerHTML =
-      this.tab === "tiers"
+      this.tab === "blueprints"
+        ? (this.blueprints?.html() ?? "")
+        : this.tab === "tiers"
         ? this.tiersHtml()
         : this.tab === "research"
           ? this.researchHtml()
@@ -338,6 +347,7 @@ export class Overview {
   private onClick = (ev: MouseEvent) => {
     const btn = (ev.target as HTMLElement).closest<HTMLElement>("button");
     if (!btn) return;
+    if (this.blueprints?.onClick(btn)) return;
     if (btn.dataset.upgrade) {
       this.editor.buyUpgrade(btn.dataset.upgrade as UpgradeId);
       this.bodyKey = "";
