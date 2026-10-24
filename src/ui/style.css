@@ -1354,6 +1354,8 @@ button.danger {
   font-weight: 600;
   color: var(--warn);
   letter-spacing: 0.04em;
+}
+
 /* ---------- Statistik: Rang, Effizienz, Engpaesse ---------- */
 
 .rank-ladder {

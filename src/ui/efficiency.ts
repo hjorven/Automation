@@ -101,7 +101,7 @@ export function state(e: Entity, w: World): Why | undefined {
     return starved ? "power" : "ok";
   }
   if (e instanceof Machine) {
-    if (!e.recipe) return "recipe";
+    if (!e.recipe) return e.type === "smelter" ? "input" : "recipe";
     if (e.crafting) return starved ? "power" : "ok";
     const full = e.recipe.outputs.some((s) => (e.output.get(s.item) ?? 0) > s.count);
     return full ? "output" : "input";
