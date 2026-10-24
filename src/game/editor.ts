@@ -5,11 +5,38 @@ import { BELT_LEVEL, type BuildId } from "../sim/progression";
 import type { Recipe } from "../sim/recipes";
 import type { WreckLoot } from "../sim/wrecks";
 import type { UpgradeId } from "../sim/upgrades";
+import {
+  BLUEPRINT_TIER,
+  MAX_SIDE,
+  capture,
+  demolishRect,
+  normRect,
+  pasteBlueprint,
+  rotateBlueprint,
+  type Blueprint,
+  type Rect,
+} from "../sim/blueprint";
 import { entityTypeOf, type BuildError, type World } from "../sim/world";
 
-export type Tool = "hand" | "delete" | BuildId;
+export type Tool = "hand" | "delete" | "blueprint" | BuildId;
 
-const isBeltTool = (t: Tool) => t !== "hand" && t !== "delete" && !!BELT_LEVEL[t];
+/** Werkzeug, das ein Gebaeude baut (nicht Hand, Abriss oder Blaupause). */
+export const isBuildTool = (t: Tool): t is BuildId => t !== "hand" && t !== "delete" && t !== "blueprint";
+
+const isBeltTool = (t: Tool) => isBuildTool(t) && !!BELT_LEVEL[t];
+
+/** Blaupausen-Werkzeug: erst Bereich markieren, dann Kopie platzieren. */
+export interface BlueprintState {
+  mode: "select" | "paste";
+  /** Markierter Bereich (Ecken wie gezogen). */
+  rect: Rect | null;
+  /** Aktuelle Kopie zum Einfuegen. */
+  clip: Blueprint | null;
+  /** Obere linke Ecke der Vorschau; null, solange noch nicht angetippt. */
+  at: { x: number; y: number } | null;
+  /** Ergebnis des letzten Einfuegens (fuer die UI). */
+  last: { built: number; skipped: number; at: number } | null;
+}
 
 interface Stroke {
   lastX: number;
@@ -36,6 +63,8 @@ export class Editor {
   /** Zuletzt geborgenes Wrack (Meldung in der UI). */
   lastSalvage: { loot: WreckLoot; at: number } | null = null;
 
+  readonly bp: BlueprintState = { mode: "select", rect: null, clip: null, at: null, last: null };
+
   private stroke: Stroke | null = null;
   private readonly listeners = new Set<() => void>();
 
@@ -54,7 +83,14 @@ export class Editor {
   }
 
   setTool(tool: Tool) {
-    if (tool !== "hand" && tool !== "delete" && !this.world.isUnlocked(tool)) return;
+    if (isBuildTool(tool) && !this.world.isUnlocked(tool)) return;
+    if (tool === "blueprint") {
+      if (this.world.tier < BLUEPRINT_TIER) return;
+      if (this.tool !== "blueprint") {
+        this.bp.mode = this.bp.clip ? "paste" : "select";
+        this.bp.rect = null;
+      }
+    }
     this.tool = tool;
     if (tool !== "hand") {
       this.selectedId = null;
@@ -64,7 +100,88 @@ export class Editor {
   }
 
   rotate() {
+    if (this.tool === "blueprint" && this.bp.mode === "paste" && this.bp.clip) return this.bpRotate();
     this.rotation = rotateCW(this.rotation);
+    this.emit();
+  }
+
+  // ------------------------------------------------------------ Blaupausen
+
+  /** Markierten Bereich kopieren und zum Einfuegen wechseln. */
+  bpCopy(): boolean {
+    const r = this.bp.rect;
+    const clip = r && capture(this.world, r);
+    if (!clip) return false;
+    const n = normRect(r);
+    this.bp.clip = clip;
+    this.bp.mode = "paste";
+    // Vorschau gleich rechts neben dem Original, damit man sie sieht.
+    this.bp.at = { x: n.x1 + 2, y: n.y0 };
+    this.bp.rect = null;
+    this.emit();
+    return true;
+  }
+
+  /** Alles im markierten Bereich abreissen. */
+  bpDemolish(): number {
+    const r = this.bp.rect;
+    const n = r ? demolishRect(this.world, r) : 0;
+    this.bp.rect = null;
+    if (this.selected === undefined) this.selectedId = null;
+    this.emit();
+    return n;
+  }
+
+  bpRotate() {
+    if (!this.bp.clip) return;
+    const old = this.bp.clip;
+    this.bp.clip = rotateBlueprint(old);
+    // Um die Mitte drehen, damit die Vorschau nicht wegspringt.
+    const at = this.bp.at;
+    if (at) {
+      at.x += Math.floor(old.w / 2) - Math.floor(old.h / 2);
+      at.y += Math.floor(old.h / 2) - Math.floor(old.w / 2);
+    }
+    this.emit();
+  }
+
+  bpPaste() {
+    const { clip, at } = this.bp;
+    if (!clip || !at) return;
+    const r = pasteBlueprint(this.world, clip, at.x, at.y);
+    this.bp.last = { ...r, at: performance.now() };
+    this.emit();
+  }
+
+  /** Gespeicherte Blaupause zum Einfuegen aufnehmen. */
+  bpLoad(bp: Blueprint) {
+    this.bp.clip = bp;
+    this.bp.at = null;
+    this.bp.rect = null;
+    this.bp.mode = "paste";
+    this.tool = "blueprint";
+    this.selectedId = null;
+    this.emit();
+  }
+
+  /** Neuen Bereich markieren (Kopie bleibt bis dahin erhalten). */
+  bpSelectMode() {
+    this.bp.mode = "select";
+    this.bp.rect = null;
+    this.emit();
+  }
+
+  private bpStroke(x: number, y: number, begin: boolean) {
+    const bp = this.bp;
+    if (bp.mode === "select") {
+      if (begin || !bp.rect) bp.rect = { x0: x, y0: y, x1: x, y1: y };
+      const r = bp.rect;
+      r.x1 = Math.max(r.x0 - MAX_SIDE + 1, Math.min(r.x0 + MAX_SIDE - 1, x));
+      r.y1 = Math.max(r.y0 - MAX_SIDE + 1, Math.min(r.y0 + MAX_SIDE - 1, y));
+    } else if (bp.clip) {
+      // Finger haelt die Mitte der Vorschau.
+      bp.at = { x: x - Math.floor(bp.clip.w / 2), y: y - Math.floor(bp.clip.h / 2) };
+    }
     this.emit();
   }
 
@@ -156,12 +273,19 @@ export class Editor {
   /** `tap`: kurzes Antippen statt Ziehen (dreht ein vorhandenes gleiches Gebaeude). */
   strokeBegin(x: number, y: number, tap: boolean) {
     this.stroke = { lastX: x, lastY: y, placed: new Set(), tap };
+    if (this.tool === "blueprint") return this.bpStroke(x, y, true);
     this.applyAt(x, y, null);
   }
 
   strokeMove(x: number, y: number) {
     const s = this.stroke;
     if (!s) return;
+    if (this.tool === "blueprint") {
+      if (s.lastX !== x || s.lastY !== y) this.bpStroke(x, y, false);
+      s.lastX = x;
+      s.lastY = y;
+      return;
+    }
     // Feld fuer Feld laufen, damit bei schnellen Bewegungen keine Luecken entstehen.
     while (s.lastX !== x || s.lastY !== y) {
       const nx = s.lastX + Math.sign(x - s.lastX);
@@ -180,7 +304,7 @@ export class Editor {
     const w = this.world;
     const s = this.stroke!;
     const tool = this.tool;
-    if (tool === "hand") return;
+    if (tool === "hand" || tool === "blueprint") return;
 
     if (tool === "delete") {
       const wreck = w.entityAt(x, y);

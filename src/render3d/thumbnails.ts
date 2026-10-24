@@ -44,7 +44,7 @@ import { PALETTE } from "./palette";
 
 const SIZE = 128;
 
-export type ThumbnailId = BuildId | "hand" | "delete" | "menu" | "rotate0" | "rotate1" | "rotate2" | "rotate3";
+export type ThumbnailId = BuildId | "hand" | "delete" | "blueprint" | "menu" | "rotate0" | "rotate1" | "rotate2" | "rotate3";
 
 /**
  * Rendert jedes Gebaeude-Modell einmal als kleines Bild (Data-URL) fuer die
@@ -80,6 +80,7 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
   const builders: [ThumbnailId, () => Object3D][] = [
     ["hand", () => iconModel("hand")],
     ["delete", () => iconModel("delete")],
+    ["blueprint", () => iconModel("blueprint")],
     ["menu", () => iconModel("menu")],
     ...[0, 1, 2, 3].map((d): [ThumbnailId, () => Object3D] => [`rotate${d}` as ThumbnailId, () => iconModel("rotate", d)]),
     ["belt", () => beltModel(beltTex, PALETTE.beltRail)],

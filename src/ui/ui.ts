@@ -12,6 +12,9 @@ import { Overview, type OverviewTab } from "./overview";
 import { Panel } from "./panel";
 import { DeliveryStats } from "./stats";
 import { Efficiency } from "./efficiency";
+import { BlueprintBar } from "./blueprint-bar";
+import { BlueprintTab } from "./blueprint-tab";
+import { BlueprintLibrary } from "../storage/blueprints";
 import { factoryScore } from "../sim/value";
 import { Toolbar, type Thumbs } from "./toolbar";
 import { Tutorial } from "./tutorial";
@@ -41,6 +44,8 @@ export class Ui {
   private readonly toasts = new Toasts();
   private readonly stats: DeliveryStats;
   private readonly efficiency: Efficiency;
+  private readonly blueprintBar: BlueprintBar;
+  private pasteAt = 0;
   private tier: number;
   private errorAt = 0;
   private salvageAt = 0;
@@ -65,6 +70,11 @@ export class Ui {
     });
     this.tutorial = new Tutorial(editor, (t) => this.toolbar.buttonFor(t));
     this.tier = editor.world.tier;
+    const library = new BlueprintLibrary();
+    this.overview.blueprints = new BlueprintTab(editor, library, () => this.overview.close(), () => this.overview.update());
+    this.blueprintBar = new BlueprintBar(editor, library, () => this.openOverview("blueprints"), (text, kind) =>
+      this.toasts.show(text, kind),
+    );
 
     window.addEventListener("keydown", this.onKey);
     const track = (e: PointerEvent) => {
@@ -101,6 +111,7 @@ export class Ui {
       this.toolbar.refresh();
     }
     this.hud.update();
+    this.blueprintBar.update();
     this.panel.update();
     this.overview.update();
     this.tutorial.update();
@@ -119,9 +130,16 @@ export class Ui {
       if (sal.loot.recipe) parts.push(`Bauplan "${recipeById(sal.loot.recipe)?.name ?? sal.loot.recipe}"`);
       this.toasts.show(`Geborgen: ${parts.join(", ")}`, "ok", 4500);
     }
+    const last = this.editor.bp.last;
+    if (last && last.at !== this.pasteAt) {
+      this.pasteAt = last.at;
+      const text = last.skipped ? `${last.built} gebaut, ${last.skipped} ausgelassen` : `${last.built} Gebäude gebaut`;
+      this.toasts.show(text, last.skipped ? "bad" : "ok");
+    }
     this.toolbar.refresh();
     this.panel.render();
     this.hud.update();
+    this.blueprintBar.update();
     this.tutorial.update();
   }
 
@@ -172,6 +190,7 @@ export class Ui {
     const tool = Object.keys(TOOL_KEYS).find((t) => TOOL_KEYS[t] === k) as Tool | undefined;
     if (tool) this.editor.setTool(tool);
     else if (k === "r") this.editor.rotate();
+    else if (ev.key === "Enter" && this.editor.tool === "blueprint") this.editor.bpPaste();
     else if (k === "i") this.overview.isOpen ? this.overview.close() : this.openOverview();
     else if (ev.key === "Escape") {
       if (this.overview.isOpen) this.overview.close();

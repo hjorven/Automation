@@ -2,6 +2,7 @@ import { NeutralToneMapping, PCFSoftShadowMap, WebGLRenderer } from "three";
 import { Editor } from "./game/editor";
 import { Controls } from "./input/controls";
 import { CameraRig } from "./render3d/camera-rig";
+import { BlueprintView } from "./render3d/blueprint-view";
 import { SceneView } from "./render3d/scene-view";
 import { TICK_MS } from "./sim/constants";
 import { deserialize, serialize, type SaveData } from "./sim/save";
@@ -31,6 +32,8 @@ async function main() {
   const editor = new Editor(world);
   const rig = new CameraRig(host.clientWidth, host.clientHeight);
   const view = new SceneView();
+  const blueprintView = new BlueprintView();
+  view.scene.add(blueprintView.group);
 
   const resize = () => {
     renderer.setSize(host.clientWidth, host.clientHeight);
@@ -113,6 +116,7 @@ async function main() {
     if (steps === MAX_CATCH_UP) acc = 0;
 
     view.render(world, rig, acc / TICK_MS, deltaMS / 1000, editor.selectedId);
+    blueprintView.update(world, editor.tool === "blueprint", editor.bp, now / 1000);
     renderer.render(view.scene, rig.camera);
 
     uiTimer += deltaMS;

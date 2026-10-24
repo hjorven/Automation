@@ -360,26 +360,35 @@ const num = (v: unknown) => (typeof v === "number" && Number.isFinite(v) ? v : 0
 const CODE_PREFIX = "AUTO1:";
 
 /** Spielstand als kopierbarer Text: komprimiertes JSON in Base64. */
-export async function encodeSave(data: SaveData): Promise<string> {
-  const json = new TextEncoder().encode(JSON.stringify(data));
-  const packed = await pipe(json, new CompressionStream("deflate-raw"));
-  return CODE_PREFIX + toBase64(packed);
+export function encodeSave(data: SaveData): Promise<string> {
+  return encodeCode(CODE_PREFIX, data);
 }
 
-export async function decodeSave(code: string): Promise<unknown> {
+export function decodeSave(code: string): Promise<unknown> {
+  return decodeCode(CODE_PREFIX, code, "Spielstand");
+}
+
+/** Beliebige Daten als Text-Code mit Kennung (auch fuer Blaupausen). */
+export async function encodeCode(prefix: string, data: unknown): Promise<string> {
+  const json = new TextEncoder().encode(JSON.stringify(data));
+  const packed = await pipe(json, new CompressionStream("deflate-raw"));
+  return prefix + toBase64(packed);
+}
+
+export async function decodeCode(prefix: string, code: string, what: string): Promise<unknown> {
   const text = code.replace(/\s+/g, "");
-  if (!text.startsWith(CODE_PREFIX)) throw new Error("Das ist kein Spielstand-Code");
+  if (!text.startsWith(prefix)) throw new Error(`Das ist kein ${what}-Code`);
   let bytes: Uint8Array;
   try {
-    bytes = fromBase64(text.slice(CODE_PREFIX.length));
+    bytes = fromBase64(text.slice(prefix.length));
   } catch {
-    throw new Error("Spielstand-Code ist beschädigt");
+    throw new Error(`${what}-Code ist beschädigt`);
   }
   try {
     const json = await pipe(bytes, new DecompressionStream("deflate-raw"));
     return JSON.parse(new TextDecoder().decode(json));
   } catch {
-    throw new Error("Spielstand-Code ist beschädigt");
+    throw new Error(`${what}-Code ist beschädigt`);
   }
 }
 
