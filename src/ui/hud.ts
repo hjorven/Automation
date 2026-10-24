@@ -70,6 +70,8 @@ export class Hud {
         `<span class="num"></span><span class="power-sub"></span><span class="power-note" hidden></span></div>`;
     }
 
+    html += `<div class="threat" data-threat hidden></div>`;
+
     const tool = this.editor.tool;
     if (isBuildTool(tool)) {
       html += `<div class="build-cost" data-build><span class="caps">${toolName(tool)}</span></div>`;
@@ -134,6 +136,21 @@ export class Hud {
       const note = power.querySelector<HTMLElement>(".power-note")!;
       note.hidden = !low;
       if (low) note.textContent = `Zu wenig Strom: Maschinen laufen mit ${fmt(100 * p.factor)} %`;
+    }
+
+    // Smog und Angriffe: nur zeigen, wenn es etwas zu sagen gibt.
+    const threat = this.el.querySelector<HTMLElement>("[data-threat]");
+    if (threat) {
+      const h = w.hazards;
+      const smog = h.emission(w);
+      const parts: string[] = [];
+      if (smog > 0) parts.push(`Smog ${fmt(smog)}/s`);
+      if (h.creatures.length) parts.push(`<b>Angriff: ${h.creatures.length} Kreaturen</b>`);
+      else if (w.peaceful && smog > 0) parts.push("friedlich");
+      const html = parts.join(" · ");
+      threat.hidden = !html;
+      threat.classList.toggle("bad", h.creatures.length > 0);
+      if (threat.innerHTML !== html) threat.innerHTML = html;
     }
 
     const build = this.el.querySelector<HTMLElement>("[data-build]");

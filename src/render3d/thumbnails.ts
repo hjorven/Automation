@@ -33,6 +33,7 @@ import {
   smelterModel,
   solarModel,
   sorterModel,
+  turretModel,
   splitterModel,
   storageModel,
   tunnelModel,
@@ -105,6 +106,7 @@ export function renderThumbnails(): Partial<Record<ThumbnailId, string>> {
     ["solar", solarModel],
     ["accumulator", accumulatorModel],
     ["radar", radarModel],
+    ["turret", turretModel],
   ];
   for (const [type, build] of builders) {
     const model = build();

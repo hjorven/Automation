@@ -8,6 +8,9 @@ export interface MenuActions {
   replace(data: SaveData | null): Promise<void>;
   lastSavedAt(): number | null;
   restartTutorial(): void;
+  /** Friedlicher Modus: keine Kreaturen und Angriffe. */
+  peaceful(): boolean;
+  setPeaceful(on: boolean): void;
 }
 
 /** Spiel-Menue: Export/Import als Text oder Datei, neues Spiel. */
@@ -41,7 +44,10 @@ export class Menu {
       `</div><div class="actions">` +
       `<button data-action="import">Code laden</button>` +
       `<label class="file-btn">Datei laden<input type="file" accept=".txt,text/plain" hidden></label>` +
-      `</div><div class="caps">Hilfe</div><div class="actions">` +
+      `</div><div class="caps">Herausforderung</div>` +
+      `<div class="label" id="peaceful-label">${this.peacefulText()}</div>` +
+      `<div class="actions"><button data-action="peaceful" id="peaceful-btn">${this.actions.peaceful() ? "Kreaturen einschalten" : "Friedlich spielen"}</button></div>` +
+      `<div class="caps">Hilfe</div><div class="actions">` +
       `<button data-action="tutorial">Einführung neu starten</button>` +
       `</div><div class="actions">` +
       `<button data-action="new" class="danger">Neues Spiel</button>` +
@@ -49,6 +55,12 @@ export class Menu {
       `</div>`;
     this.el.hidden = false;
     this.scrim.hidden = false;
+  }
+
+  private peacefulText(): string {
+    return this.actions.peaceful()
+      ? "Friedlicher Modus: Smog gibt es weiterhin, aber keine Kreaturen und Angriffe."
+      : "Kreaturen an: Smog weckt Nester, nachts greifen sie an. Abwehrtürme schützen die Fabrik.";
   }
 
   close() {
@@ -90,6 +102,12 @@ export class Menu {
             await this.actions.replace(null);
           }
           break;
+        case "peaceful": {
+          this.actions.setPeaceful(!this.actions.peaceful());
+          btn.textContent = this.actions.peaceful() ? "Kreaturen einschalten" : "Friedlich spielen";
+          this.el.querySelector("#peaceful-label")!.textContent = this.peacefulText();
+          break;
+        }
         case "tutorial":
           this.actions.restartTutorial();
           this.close();

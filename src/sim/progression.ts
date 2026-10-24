@@ -45,7 +45,7 @@ export const TIERS: readonly Tier[] = [
   {
     name: "Logistik",
     cost: [s("gear", 50), s("wire", 100), s("iron_plate", 50)],
-    buildings: ["splitter", "merger"],
+    buildings: ["splitter", "merger", "turret"],
     recipes: ["circuit"],
   },
   {
@@ -127,6 +127,7 @@ export const BUILD_COSTS: Partial<Record<BuildId, ItemStack[]>> = {
   merger: [s("iron_plate", 2), s("gear", 2)],
   tunnel: [s("iron_plate", 4), s("gear", 2)],
   storage: [s("iron_plate", 20), s("gear", 5)],
+  turret: [s("iron_plate", 20), s("gear", 10), s("circuit", 4)],
   sorter: [s("gear", 4), s("circuit", 2)],
   generator_coal: [s("iron_plate", 20), s("gear", 10), s("circuit", 5)],
   solar: [s("iron_plate", 10), s("wire", 20), s("circuit", 6)],
@@ -153,6 +154,7 @@ export const POWER_USE: Partial<Record<EntityType, number>> = {
   foundry: 16,
   refinery: 30,
   manufacturer: 45,
+  turret: 6,
 };
 
 /** Kraftwerke: Brennstoff, Leistung in MW und Brenndauer einer Einheit bei Volllast. */

@@ -38,7 +38,8 @@ export type EntityType =
   | "sorter"
   | "solar"
   | "accumulator"
-  | "radar";
+  | "radar"
+  | "turret";
 
 abstract class EntityBase {
   abstract readonly type: EntityType;
@@ -552,6 +553,31 @@ export class Accumulator extends EntityBase {
   }
 }
 
+/** Abwehrturm gegen Kreaturen; zielt und schiesst in Hazards.update. */
+export class Turret extends EntityBase {
+  readonly type = "turret";
+  /** Ticks bis zum naechsten Schuss (laeuft bei Strommangel langsamer ab). */
+  reload = 0;
+  /** Blickrichtung in Sim-Koordinaten (atan2(dy, dx)). */
+  aim = 0;
+  /** Tick des letzten Schusses (fuer das Muendungsfeuer). */
+  lastShot = -Infinity;
+
+  shoot(angle: number, tick: number, reload: number) {
+    this.aim = angle;
+    this.lastShot = tick;
+    this.reload = reload;
+  }
+
+  accept(): boolean {
+    return false;
+  }
+
+  outputsTo(): boolean {
+    return false;
+  }
+}
+
 /** Mindestabstand zweier Items im Tunnel, wie auf dem Band. */
 const TUNNEL_GAP = Math.ceil(ITEM_SPACING / BELT_SPEED);
 
@@ -568,7 +594,8 @@ export type Entity =
   | Generator
   | Solar
   | Accumulator
-  | Radar;
+  | Radar
+  | Turret;
 
 function take(map: Map<ItemId, number>, item: ItemId, n: number) {
   const left = (map.get(item) ?? 0) - n;

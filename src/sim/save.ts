@@ -1,6 +1,7 @@
 import type { Dir } from "./dir";
 import { Generator, Storage, type Belt, type Entity, type EntityType } from "./entities";
 import { ITEM_ORDER, type ItemId } from "./items";
+import { CREATURE_HP, NEST_HP, nestSites } from "./hazards";
 import { ACCUMULATOR, MAX_TIER } from "./progression";
 import { recipeById } from "./recipes";
 import { RESEARCH } from "./research";
@@ -84,6 +85,22 @@ export interface SaveData {
   /** Bester Fabrikwert pro Minute (optional). */
   bestScore?: number;
   entities: SavedEntity[];
+  /** Friedlicher Modus; fehlt in alten Staenden, die dann friedlich laden. */
+  peaceful?: boolean;
+  /** Smog, Nester, Kreaturen und Schaden an Gebaeuden. */
+  hazards?: SavedHazards;
+}
+
+export interface SavedHazards {
+  pollution: [string, number][];
+  /** Nur veraenderte Nester: [id, Lebenspunkte, Wut]; zerstoerte in `cleared`. */
+  nests: [string, number, number][];
+  cleared: string[];
+  creatures: { x: number; y: number; hp: number; nest: string; fleeing: boolean }[];
+  /** Schaden an Gebaeuden: [x, y, Schaden]. */
+  damage: [number, number, number][];
+  waves: number;
+  destroyed: number;
 }
 
 export function serialize(world: World): SaveData {
@@ -105,8 +122,64 @@ export function serialize(world: World): SaveData {
     upgrades: [...world.upgrades],
     bestScore: world.bestScore,
     entities,
+    peaceful: world.peaceful,
+    hazards: saveHazards(world),
   };
 }
+
+function saveHazards(world: World): SavedHazards {
+  const h = world.hazards;
+  const sites = nestSites();
+  const nests: [string, number, number][] = [];
+  const cleared: string[] = [];
+  for (const site of sites) {
+    const n = h.nests.get(site.id);
+    if (!n) cleared.push(site.id);
+    else if (n.hp < NEST_HP || n.anger > 0) nests.push([n.id, n.hp, n.anger]);
+  }
+  const damage: [number, number, number][] = [];
+  for (const [id, d] of h.damage) {
+    const e = world.entities.get(id);
+    if (e) damage.push([e.x, e.y, d]);
+  }
+  return {
+    pollution: [...h.pollution],
+    nests,
+    cleared,
+    creatures: h.creatures.map((c) => ({ x: c.x, y: c.y, hp: c.hp, nest: c.nest, fleeing: c.fleeing })),
+    damage,
+    waves: h.waves,
+    destroyed: h.destroyed,
+  };
+}
+
+function restoreHazards(w: World, s: SavedHazards | undefined) {
+  const h = w.hazards;
+  // Alte Staende koennen Gebaeude dort haben, wo heute ein Nest laege: dann gibt es dort keins.
+  for (const n of [...h.nests.values()]) if (w.entityAt(n.x, n.y)) h.nests.delete(n.id);
+  if (!s || typeof s !== "object") return;
+  for (const [k, v] of arr(s.pollution)) if (typeof k === "string" && num(v) > 0) h.pollution.set(k, num(v));
+  for (const id of arr(s.cleared)) if (h.nests.delete(String(id))) h.nestsCleared++;
+  for (const [id, hp, anger] of arr(s.nests)) {
+    const n = h.nests.get(String(id));
+    if (!n) continue;
+    n.hp = Math.min(NEST_HP, Math.max(1, num(hp)));
+    n.anger = Math.max(0, num(anger));
+  }
+  for (const c of arr(s.creatures)) {
+    if (!c || !h.nests.has(c.nest)) continue;
+    h.addCreature(num(c.x), num(c.y), Math.max(1, Math.min(CREATURE_HP, num(c.hp))), c.nest, !!c.fleeing);
+  }
+  for (const [x, y, d] of arr(s.damage)) {
+    const e = w.entityAt(x, y);
+    if (e && num(d) > 0) h.damage.set(e.id, Math.min(h.maxHp(e) - 1, num(d)));
+  }
+  h.waves = Math.max(0, Math.floor(num(s.waves)));
+
+  h.destroyed = Math.max(0, Math.floor(num(s.destroyed)));
+}
+
+const arr = <T>(v: T[] | undefined): T[] => (Array.isArray(v) ? v : []);
 
 function saveEntity(e: Entity): SavedEntity {
   const base: SavedEntity = { type: e.type, x: e.x, y: e.y, dir: e.dir };
@@ -132,6 +205,7 @@ function saveEntity(e: Entity): SavedEntity {
     case "accumulator":
       return { ...base, stored: e.stored };
     case "solar":
+    case "turret":
       return base;
     case "splitter":
       return { ...base, buffer: e.buffer, next: e.next };
@@ -198,6 +272,9 @@ export function deserialize(raw: unknown): World {
     if (!e) continue; // z. B. Bohrer ohne Erz darunter: still ueberspringen
     restoreState(e, s, w.tick);
   }
+  // Alte Spielstaende kennen keine Kreaturen: friedlich weiterspielen, im Menue umschaltbar.
+  w.peaceful = data.peaceful ?? true;
+  restoreHazards(w, data.hazards);
   return w;
 }
 
@@ -231,6 +308,7 @@ function restoreState(e: Entity, s: SavedEntity, tick: number) {
       e.stored = Math.min(ACCUMULATOR.capacity, Math.max(0, num(s.stored)));
       break;
     case "solar":
+    case "turret":
       break;
     case "splitter":
       e.buffer = item(s.buffer);
@@ -337,6 +415,7 @@ const TYPES = new Set<string>([
   "solar",
   "accumulator",
   "radar",
+  "turret",
 ]);
 const isType = (v: unknown): v is EntityType => typeof v === "string" && TYPES.has(v);
 const isItem = (v: unknown): v is ItemId => typeof v === "string" && ITEMS.has(v);

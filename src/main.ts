@@ -73,6 +73,11 @@ async function main() {
     snapshot: () => serialize(world),
     lastSavedAt: () => lastSavedAt,
     restartTutorial: () => ui.restartTutorial(),
+    peaceful: () => world.peaceful,
+    setPeaceful(on: boolean) {
+      world.peaceful = on;
+      void save();
+    },
     async replace(data: SaveData | null) {
       // Autosave anhalten, damit der alte Stand den neuen nicht ueberschreibt.
       saving = false;

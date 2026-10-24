@@ -30,6 +30,7 @@ export const TOOL_NAMES: Partial<Record<string, string>> = {
   generator_fuel: "Treibstoffkraftwerk",
   solar: "Solarfeld",
   accumulator: "Batteriespeicher",
+  turret: "Abwehrturm",
   pump: "Ölpumpe",
   refinery: "Raffinerie",
   manufacturer: "Fertigungsanlage",
@@ -44,6 +45,7 @@ const SHORT_NAMES: Partial<Record<string, string>> = {
   generator_coal: "Kohle-KW",
   generator_fuel: "Treibst.-KW",
   accumulator: "Speicher",
+  turret: "Turm",
   manufacturer: "Fert.-Anlage",
 };
 
@@ -69,6 +71,7 @@ export const TOOL_INFO: Partial<Record<string, string>> = {
   generator_coal: "Verbrennt Kohle und liefert 75 MW Strom.",
   generator_fuel: "Verbrennt Treibstoff und liefert 150 MW Strom.",
   solar: "Liefert bei voller Sonne 20 MW, morgens und abends weniger, nachts nichts.",
+  turret: "Schießt Kreaturen in 7 Feldern Umkreis ab und zerstört Nester in Reichweite. Braucht ab Stufe Energie 6 MW.",
   accumulator: "Speichert Überschuss und gibt ihn nachts oder bei Spitzenlast wieder ab (bis 30 MW).",
   pump: "Fördert Rohöl. Nur auf Ölquellen.",
   refinery: "Verarbeitet Rohöl zu Kunststoff, Gummi und Treibstoff.",
@@ -117,6 +120,7 @@ const GROUP_OF: Partial<Record<string, ToolGroup>> = {
   generator_fuel: "power",
   solar: "power",
   accumulator: "power",
+  turret: "base",
   hub: "base",
   radar: "base",
 };
