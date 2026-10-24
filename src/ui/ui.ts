@@ -3,6 +3,7 @@ import type { Editor, Tool } from "../game/editor";
 import { renderThumbnails } from "../render3d/thumbnails";
 import { ITEM_NAMES } from "../sim/items";
 import { TIERS } from "../sim/progression";
+import { RESEARCH } from "../sim/research";
 import { recipeById } from "../sim/recipes";
 import { TOOL_KEYS, toolName } from "./catalog";
 import { dot } from "./dom";
@@ -48,8 +49,8 @@ export class Ui {
     const unlocks = (tier: number) => this.unlocksHtml(tier);
     this.toolbar = new Toolbar(editor, this.thumbs, onMenu);
     this.hud = new Hud(editor, (tab) => this.openOverview(tab));
-    this.panel = new Panel(editor, this.thumbs, unlocks, () => this.openOverview("tiers"));
-    this.overview = new Overview(editor, stats, unlocks);
+    this.panel = new Panel(editor, this.thumbs, unlocks, (tab = "tiers") => this.openOverview(tab));
+    this.overview = new Overview(editor, stats, unlocks, (b, r) => this.contentHtml(b, r));
     this.tutorial = new Tutorial(editor, (t) => this.toolbar.buttonFor(t));
     this.tier = editor.world.tier;
 
@@ -106,22 +107,35 @@ export class Ui {
     if (!gained) return;
     showTierBanner(w.tier, this.unlocksHtml(w.tier));
     this.toolbar.markFresh(TIERS[w.tier].buildings as Tool[]);
-    this.toasts.show(`Stufe ${w.tier} erreicht: ${TIERS[w.tier].name}`, "ok", 4000);
+    const research = RESEARCH.filter((n) => n.tier === w.tier).length;
+    this.toasts.show(
+      `Stufe ${w.tier} erreicht: ${TIERS[w.tier].name}${research ? `. Neue Forschung verfügbar` : ""}`,
+      "ok",
+      4000,
+    );
     this.toolbar.refresh();
     this.panel.render();
   }
 
-  /** Was Stufe `tier` freischaltet, als Chips mit Modellbildern. */
+  /** Was Stufe `tier` freischaltet, als Chips mit Modellbildern (plus neue Forschung). */
   private unlocksHtml(tier: number): string {
     const t = TIERS[tier];
     if (!t) return "";
-    const buildings = t.buildings.map((b) => {
+    const research = RESEARCH.filter((n) => n.tier === tier).length;
+    const more = research ? `<span class="unlock recipe">${research} Forschung${research > 1 ? "en" : ""}</span>` : "";
+    return this.contentHtml(t.buildings, t.recipes) + more;
+  }
+
+  /** Gebaeude und Rezepte als Chips. */
+  private contentHtml(buildingIds: readonly string[], recipeIds: readonly string[]): string {
+    const buildings = buildingIds.map((b) => {
       const img = this.thumbs[b];
       return `<span class="unlock">${img ? `<img src="${img}" alt="">` : ""}${toolName(b)}</span>`;
     });
-    const recipes = t.recipes.map((id) => {
-      const out = recipeById(id)?.outputs[0]?.item;
-      return `<span class="unlock recipe">${out ? `${dot(out)}${ITEM_NAMES[out]}` : id}</span>`;
+    const recipes = recipeIds.map((id) => {
+      const r = recipeById(id);
+      const out = r?.outputs[0]?.item;
+      return `<span class="unlock recipe">${out ? `${dot(out)}${r?.alt ? (r.name ?? id) : ITEM_NAMES[out]}` : id}</span>`;
     });
     return [...buildings, ...recipes].join("");
   }

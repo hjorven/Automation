@@ -147,7 +147,7 @@ describe("Strom", () => {
   it("Maschinen laufen bei halbem Strom halb so schnell", () => {
     const make = (assemblers: number) => {
       const w = new World();
-      w.tier = MAX_TIER;
+      w.unlockAll();
       w.place("hub", 0, 0, RIGHT);
       for (let i = 0; i < assemblers; i++) w.place("assembler", i, 10, RIGHT);
       const m = w.place("smelter", 3, 3, RIGHT) as Machine;
@@ -208,7 +208,7 @@ describe("Baender Mk2 und Mk3", () => {
 
   it("Aufruesten kostet die neue Stufe und erstattet die alte", () => {
     const w = new World();
-    w.tier = MAX_TIER;
+    w.unlockAll();
     w.storage.set("steel", 5);
     w.storage.set("rubber", 5);
     const b = w.build("belt", 0, 0, RIGHT) as Belt;
@@ -225,7 +225,7 @@ describe("Baender Mk2 und Mk3", () => {
 
   it("neue Mk2-Baender entstehen direkt schnell", () => {
     const w = new World();
-    w.tier = MAX_TIER;
+    w.unlockAll();
     w.storage.set("steel", 1);
     const b = w.build("belt_mk2", 0, 0, RIGHT) as Belt;
     expect(b.type).toBe("belt");
@@ -265,7 +265,7 @@ describe("Lagerkiste und Sortierer", () => {
 describe("Spaete Maschinen", () => {
   it("Fertigungsanlage verarbeitet vier Zutaten", () => {
     const w = new World();
-    w.tier = MAX_TIER;
+    w.unlockAll();
     const m = w.place("manufacturer", 0, 0, RIGHT, recipeById("turbo_motor")!) as Machine;
     const feed: [ItemId, number][] = [
       ["motor", 2],
@@ -289,7 +289,7 @@ describe("Spaete Maschinen", () => {
 
   it("Bohrer Mk3 ersetzt Mk1 und Mk2", () => {
     const w = new World();
-    w.tier = MAX_TIER;
+    w.unlockAll();
     for (const [i, n] of [["heavy_frame", 10], ["computer", 10], ["motor", 10], ["steel", 10], ["gear", 10], ["circuit", 10]] as [ItemId, number][]) {
       w.storage.set(i, n);
     }
@@ -305,7 +305,7 @@ describe("Spaete Maschinen", () => {
 describe("Spielstand v3", () => {
   it("speichert neue Gebaeude samt Zustand", () => {
     const w = new World();
-    w.tier = MAX_TIER;
+    w.unlockAll();
     (w.place("belt", 0, 0, RIGHT) as Belt).level = 3;
     const st = w.place("storage", 1, 0, RIGHT) as Storage;
     st.queue.push("gear", "wire");

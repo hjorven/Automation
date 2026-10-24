@@ -1,6 +1,7 @@
 import type { EntityType } from "./entities";
 import type { ItemId } from "./items";
 import type { ItemStack } from "./recipes";
+import { RESEARCH } from "./research";
 
 /**
  * Was der Spieler bauen kann: alle Gebaeude plus die schnelleren Baender, die
@@ -14,7 +15,9 @@ export const BELT_LEVEL: Partial<Record<BuildId, 1 | 2 | 3>> = { belt: 1, belt_m
 /**
  * Hub-Stufen wie in Satisfactory: Items im Hub-Lager ausgeben, um die naechste
  * Stufe zu erreichen. Jede Stufe schaltet Gebaeude und Rezepte frei. Ausgelegt
- * auf etwa 8 Stunden bis zur letzten Stufe.
+ * auf etwa 8 Stunden bis zur letzten Stufe. Optionales (schnellere Baender
+ * und Bohrer, Logistik-Extras, alternative Rezepte) kommt aus dem freien
+ * Forschungsbaum in research.ts.
  */
 export interface Tier {
   name: string;
@@ -42,25 +45,25 @@ export const TIERS: readonly Tier[] = [
   {
     name: "Logistik",
     cost: [s("gear", 50), s("wire", 100), s("iron_plate", 50)],
-    buildings: ["splitter", "merger", "tunnel", "storage"],
+    buildings: ["splitter", "merger"],
     recipes: ["circuit"],
   },
   {
     name: "Energie",
     cost: [s("circuit", 100), s("iron_plate", 200), s("copper_plate", 100)],
-    buildings: ["generator_coal", "sorter"],
+    buildings: ["generator_coal"],
     recipes: [],
   },
   {
     name: "Stahl",
     cost: [s("circuit", 200), s("gear", 300)],
-    buildings: ["foundry", "belt_mk2"],
+    buildings: ["foundry"],
     recipes: ["steel"],
   },
   {
     name: "Bauwesen",
     cost: [s("steel", 400), s("circuit", 400)],
-    buildings: ["extractor_mk2"],
+    buildings: [],
     recipes: ["concrete", "reinforced_plate", "rotor"],
   },
   {
@@ -72,19 +75,19 @@ export const TIERS: readonly Tier[] = [
   {
     name: "Öl",
     cost: [s("motor", 100), s("control_unit", 100), s("heavy_frame", 50)],
-    buildings: ["pump", "refinery", "generator_fuel"],
+    buildings: ["pump", "refinery"],
     recipes: ["plastic", "rubber", "fuel"],
   },
   {
     name: "Elektronik",
     cost: [s("plastic", 400), s("rubber", 400), s("control_unit", 300)],
-    buildings: ["belt_mk3"],
+    buildings: [],
     recipes: ["smelt_silicon", "computer"],
   },
   {
     name: "Chemie",
     cost: [s("computer", 100), s("heavy_frame", 150)],
-    buildings: ["extractor_mk3"],
+    buildings: [],
     recipes: ["battery"],
   },
   {
@@ -156,15 +159,28 @@ export function powerUse(type: EntityType): number {
   return POWER_USE[type] ?? 0;
 }
 
-/** Stufe, ab der ein Gebaeude gebaut werden darf. */
-export function buildingTier(id: BuildId): number {
+/** Stufe, die ein Gebaeude direkt freischaltet (ohne Forschung). */
+export function hubBuildingTier(id: BuildId): number {
   const i = TIERS.findIndex((t) => t.buildings.includes(id));
   return i === -1 ? Infinity : i;
 }
 
-export function recipeTier(id: string): number {
+/** Fruehste Stufe, ab der ein Gebaeude gebaut werden kann (per Stufe oder Forschung). */
+export function buildingTier(id: BuildId): number {
+  const n = RESEARCH.find((r) => r.buildings.includes(id));
+  return Math.min(hubBuildingTier(id), n ? n.tier : Infinity);
+}
+
+/** Stufe, die ein Rezept direkt freischaltet (ohne Forschung). */
+export function hubRecipeTier(id: string): number {
   const i = TIERS.findIndex((t) => t.recipes.includes(id));
   return i === -1 ? Infinity : i;
+}
+
+/** Fruehste Stufe, ab der ein Rezept nutzbar sein kann (per Stufe oder Forschung). */
+export function recipeTier(id: string): number {
+  const n = RESEARCH.find((r) => r.recipes.includes(id));
+  return Math.min(hubRecipeTier(id), n ? n.tier : Infinity);
 }
 
 export function canAfford(storage: ReadonlyMap<ItemId, number>, cost: readonly ItemStack[]): boolean {

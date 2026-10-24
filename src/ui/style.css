@@ -359,9 +359,10 @@ button.danger {
 #hud .foot button {
   flex: 1;
   min-height: 36px;
-  font-size: 12px;
+  padding: 0 4px;
+  font-size: 11px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.02em;
   text-transform: uppercase;
 }
 
@@ -1270,4 +1271,74 @@ button.danger {
   #tutorial {
     bottom: calc(var(--safe-bottom) + 92px);
   }
+}
+
+/* ---------- Forschung und Auftraege ---------- */
+
+.r-tier {
+  margin: 14px 0 8px;
+}
+.r-tier:first-of-type {
+  margin-top: 0;
+}
+.r-tier.later {
+  opacity: 0.65;
+}
+.r-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 10px;
+}
+.r-node {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+  padding: 12px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.06);
+  font-size: 13px;
+}
+.r-node.open {
+  border-color: var(--edge-strong);
+  background: var(--accent-dim);
+}
+.r-node.done {
+  border-color: rgba(111, 227, 154, 0.4);
+}
+.r-node.locked {
+  opacity: 0.6;
+}
+.r-node .r-name {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  font-weight: 600;
+  font-size: 15px;
+}
+.r-node .row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  align-items: center;
+}
+.r-node .row button {
+  flex: 1;
+  min-height: 40px;
+}
+.r-node .cost-row {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 3px 6px;
+}
+.r-node .cost-row .bar {
+  grid-column: 1 / -1;
+}
+.recipe-card .alt-name {
+  flex-basis: 100%;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--warn);
+  letter-spacing: 0.04em;
 }
