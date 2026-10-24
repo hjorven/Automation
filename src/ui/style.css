@@ -351,6 +351,15 @@ button.danger {
   grid-column: 1 / -1;
   font-weight: 600;
 }
+#hud .threat {
+  margin-top: 6px;
+  font-size: 11px;
+  opacity: 0.8;
+}
+#hud .threat.bad {
+  color: var(--bad);
+  opacity: 1;
+}
 #hud .power-sub {
   grid-column: 1 / -1;
   margin-top: -4px;

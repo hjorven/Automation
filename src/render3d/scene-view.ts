@@ -49,6 +49,7 @@ import {
   smelterModel,
   solarModel,
   sorterModel,
+  turretModel,
   splitterModel,
   storageModel,
   straightBedGeometry,
@@ -57,6 +58,7 @@ import {
 } from "./models";
 import { PALETTE } from "./palette";
 import { Environment } from "./environment";
+import { HazardsView } from "./hazards-view";
 import { TerrainView } from "./terrain";
 
 type BeltVariant = 0 | 1 | 2; // gerade, Kurve von links, Kurve von rechts
@@ -126,6 +128,8 @@ export class SceneView {
   /** Licht, Nebel und Tag/Nacht. */
   readonly env: Environment;
   private readonly entitiesGroup = new Group();
+  /** Smog, Nester und Kreaturen. */
+  private readonly hazards = new HazardsView();
   private readonly nodes = new Map<number, EntityNode>();
   private readonly templates = new Map<string, Group>();
   private worldVersion = -1;
@@ -150,7 +154,7 @@ export class SceneView {
   constructor() {
     const sc = this.scene;
     this.env = new Environment(sc);
-    sc.add(this.terrain.group, this.entitiesGroup);
+    sc.add(this.terrain.group, this.entitiesGroup, this.hazards.group);
 
     const beltRoot = new Group();
     sc.add(beltRoot);
@@ -192,7 +196,7 @@ export class SceneView {
     if (world.version !== this.worldVersion) {
       this.worldVersion = world.version;
       this.syncEntities(world);
-      this.terrain.setOccupied((x, y) => world.entityAt(x, y) !== undefined);
+      this.terrain.setOccupied((x, y) => world.entityAt(x, y) !== undefined || !!world.hazards.nestAt(x, y));
     }
 
     // Mk2 laeuft doppelt, Mk3 viermal so schnell (wie Belt.speed).
@@ -200,6 +204,7 @@ export class SceneView {
       this.beltTextures[i].offset.x = -((t * k * BELT_SPEED * TICKS_PER_SECOND) % 1);
     });
     this.animate(world, t, dt);
+    this.hazards.update(world, alpha, t, dt);
     this.drawItems(world, alpha);
 
     const sel = selectedId === null ? undefined : world.entities.get(selectedId);
@@ -450,6 +455,17 @@ export class SceneView {
           node.own[0].emissiveIntensity = k < 0.15 || (k > 0.35 && k < 0.5) ? 3 : 0.2;
           break;
         }
+        case "turret": {
+          // Kopf schwenkt zum Ziel (Sim-Winkel -> Drehung um y relativ zum Sockel).
+          const head = root.getObjectByName("head")!;
+          const target = -e.aim - root.rotation.y;
+          let diff = target - head.rotation.y;
+          diff = Math.atan2(Math.sin(diff), Math.cos(diff));
+          head.rotation.y += diff * Math.min(1, dt * 12);
+          const since = world.tick - e.lastShot;
+          node.own[0].emissiveIntensity = since < 3 ? 3 : 0;
+          break;
+        }
         case "hub": {
           const thrust = flyDrone(root, t - this.flightStart, t);
           node.spin += (0.8 + thrust * 4 - node.spin) * Math.min(1, dt * 2);
@@ -612,6 +628,8 @@ function buildTemplate(e: Exclude<Entity, Belt>): Group {
       return radarModel();
     case "wreck":
       return wreckModel();
+    case "turret":
+      return turretModel();
     default:
       // Neue Gebaeude, bis es eigene Modelle gibt.
       return placeholderModel();

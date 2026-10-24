@@ -17,6 +17,7 @@ import {
   Splitter,
   Storage,
   Tunnel,
+  Turret,
   type Entity,
   type EntityType,
   type Host,
@@ -43,6 +44,7 @@ import { RESEARCH, researchById, researchForRecipe, totalBonus, type Bonus } fro
 import { ORDER_SLOTS, makeOrder, type Order } from "./orders";
 import { DEFAULT_GEN, hash, type WorldGen } from "./terrain";
 import { WRECK_REGION, wreckLoot, wreckSite, type WreckLoot } from "./wrecks";
+import { Hazards } from "./hazards";
 import { UPGRADES, upgradeById, upgradeCost, upgradeFactor, type UpgradeId } from "./upgrades";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
@@ -111,6 +113,13 @@ export class World implements Host {
   craftingSpeed = 1;
   /** Bester je erreichter Fabrikwert pro Minute (fuer das Ranking). */
   bestScore = 0;
+  /**
+   * Friedlicher Modus: keine Kreaturen und Angriffe (Smog gibt es trotzdem).
+   * Neue Spiele starten mit Kreaturen; alte Spielstaende laden friedlich.
+   */
+  peaceful = false;
+  /** Smog, Nester, Kreaturen und Schaden an Gebaeuden. */
+  hazards = new Hazards();
 
   readonly entities = new Map<number, Entity>();
   private readonly grid = new Map<string, Entity>();
@@ -275,6 +284,8 @@ export class World implements Host {
     if (!this.isExplored(x, y)) return "fog";
     const type = entityTypeOf(id);
     if (!this.canPlace(type, x, y)) return this.grid.has(tileKey(x, y)) ? "blocked" : "ore";
+    // Nester nur fuer den Spieler sperren (wie Wasser), damit alte Spielstaende weiter laden.
+    if (this.hazards.nestAt(x, y)) return "blocked";
     // Nur fuer den Spieler: alte Spielstaende mit Gebaeuden auf heutigen Seen laden weiter.
     const obstacle = this.gen.obstacleAt(x, y);
     if (obstacle) return obstacle;
@@ -504,6 +515,9 @@ export class World implements Host {
       case "accumulator":
         e = new Accumulator(id, x, y, dir);
         break;
+      case "turret":
+        e = new Turret(id, x, y, dir);
+        break;
       case "tunnel": {
         const t = new Tunnel(id, x, y, dir);
         t.exit = this.tunnelWantsExit(x, y, dir);
@@ -523,6 +537,7 @@ export class World implements Host {
     if (!e) return undefined;
     this.entities.delete(e.id);
     this.grid.delete(tileKey(x, y));
+    this.hazards.damage.delete(e.id);
     this.version++;
     return e;
   }
@@ -562,6 +577,7 @@ export class World implements Host {
     this.tick++;
     this.updatePower();
     for (const e of this.entities.values()) e.update(this);
+    this.hazards.update(this);
   }
 
   /**
