@@ -43,6 +43,7 @@ import { RESEARCH, researchById, researchForRecipe, totalBonus, type Bonus } fro
 import { ORDER_SLOTS, makeOrder, type Order } from "./orders";
 import { DEFAULT_GEN, hash, type WorldGen } from "./terrain";
 import { WRECK_REGION, wreckLoot, wreckSite, type WreckLoot } from "./wrecks";
+import { UPGRADES, upgradeById, upgradeCost, upgradeFactor, type UpgradeId } from "./upgrades";
 
 /** Warum ein Bauauftrag nicht klappt (fuer Hinweise in der UI). */
 export type BuildError =
@@ -103,6 +104,13 @@ export class World implements Host {
   readonly power = { supply: 0, demand: 0, factor: 1, solar: 0, battery: 0, stored: 0, capacity: 0, night: false };
   powerFactor = 1;
   powerLoad = 0;
+
+  /** Erreichte Stufe je Endlos-Upgrade (fehlt = 0). */
+  readonly upgrades = new Map<UpgradeId, number>();
+  miningSpeed = 1;
+  craftingSpeed = 1;
+  /** Bester je erreichter Fabrikwert pro Minute (fuer das Ranking). */
+  bestScore = 0;
 
   readonly entities = new Map<number, Entity>();
   private readonly grid = new Map<string, Entity>();
@@ -320,6 +328,41 @@ export class World implements Host {
     const up = this.place(to, e.x, e.y, e.dir);
     if (up) this.pay(cost);
     return up;
+  }
+
+  upgradeLevel(id: UpgradeId): number {
+    return this.upgrades.get(id) ?? 0;
+  }
+
+  /** Endlos-Upgrades gibt es erst nach der letzten Hub-Stufe. */
+  get upgradesUnlocked(): boolean {
+    return this.tier >= MAX_TIER;
+  }
+
+  /** Naechste Stufe eines Endlos-Upgrades kaufen. */
+  buyUpgrade(id: UpgradeId): boolean {
+    const u = upgradeById(id);
+    if (!u || !this.upgradesUnlocked) return false;
+    const cost = upgradeCost(u, this.upgradeLevel(id));
+    if (!this.canAfford(cost)) return false;
+    this.pay(cost);
+    this.setUpgradeLevel(id, this.upgradeLevel(id) + 1);
+    return true;
+  }
+
+  /** Stufe setzen und die Multiplikatoren neu berechnen (auch beim Laden). */
+  setUpgradeLevel(id: UpgradeId, level: number) {
+    if (level > 0) this.upgrades.set(id, level);
+    else this.upgrades.delete(id);
+    const f = (k: UpgradeId) => upgradeFactor(UPGRADES.find((u) => u.id === k)!, this.upgradeLevel(k));
+    this.miningSpeed = f("mining");
+    this.craftingSpeed = f("crafting");
+    this.storageVersion++;
+  }
+
+  /** Strom-Multiplikator fuer Hub und Kraftwerke. */
+  get powerBonus(): number {
+    return upgradeFactor(UPGRADES.find((u) => u.id === "power")!, this.upgradeLevel("power"));
   }
 
   /** Naechste Hub-Stufe kaufen. */
@@ -546,6 +589,11 @@ export class World implements Host {
     if (p.night) demand *= NIGHT_DEMAND;
     solar *= sunlight(this.tick);
     if (hub) fixed += HUB_POWER + this.bonus.hubPower;
+    // Endlos-Upgrade Netzausbau verstaerkt alle Erzeuger.
+    const boost = this.powerBonus;
+    fixed *= boost;
+    solar *= boost;
+    gen *= boost;
     const renewable = fixed + solar;
 
     p.demand = demand;

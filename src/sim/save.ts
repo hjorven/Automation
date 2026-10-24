@@ -7,6 +7,7 @@ import { RESEARCH } from "./research";
 import type { Order } from "./orders";
 import { worldGen } from "./terrain";
 import { World, cellKey, cellOf } from "./world";
+import { upgradeById, type UpgradeId } from "./upgrades";
 
 /**
  * Versioniertes Spielstand-Format. Bei Aenderungen SAVE_VERSION erhoehen und
@@ -80,6 +81,10 @@ export interface SaveData {
   explored?: number[];
   /** Geborgene Wracks. */
   salvaged?: number;
+  /** Endlos-Upgrades: Id und Stufe (optional, fehlt in aelteren Staenden). */
+  upgrades?: [string, number][];
+  /** Bester Fabrikwert pro Minute (optional). */
+  bestScore?: number;
   entities: SavedEntity[];
 }
 
@@ -100,6 +105,8 @@ export function serialize(world: World): SaveData {
     orders: world.orders.map((o) => ({ ...o, reward: o.reward.map((r) => ({ ...r })) })),
     orderSeq: world.orderSeq,
     ordersDone: world.ordersDone,
+    upgrades: [...world.upgrades],
+    bestScore: world.bestScore,
     entities,
   };
 }
@@ -187,6 +194,10 @@ export function deserialize(raw: unknown): World {
     if (Number.isInteger(cells[i]) && Number.isInteger(cells[i + 1])) w.explored.add(cellKey(cells[i], cells[i + 1]));
   }
   const savedCells = [...w.explored];
+  for (const [id, level] of Array.isArray(data.upgrades) ? data.upgrades : []) {
+    if (upgradeById(id)) w.setUpgradeLevel(id as UpgradeId, Math.max(0, Math.floor(num(level))));
+  }
+  w.bestScore = Math.max(0, num(data.bestScore));
 
   for (const s of data.entities) {
     if (!isType(s.type) || !isDir(s.dir) || !Number.isInteger(s.x) || !Number.isInteger(s.y)) continue;

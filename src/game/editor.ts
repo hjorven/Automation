@@ -4,6 +4,7 @@ import type { ItemId } from "../sim/items";
 import { BELT_LEVEL, type BuildId } from "../sim/progression";
 import type { Recipe } from "../sim/recipes";
 import type { WreckLoot } from "../sim/wrecks";
+import type { UpgradeId } from "../sim/upgrades";
 import { entityTypeOf, type BuildError, type World } from "../sim/world";
 
 export type Tool = "hand" | "delete" | BuildId;
@@ -145,6 +146,11 @@ export class Editor {
 
   discardOrder(index: number) {
     if (this.world.discardOrder(index)) this.emit();
+  }
+
+  buyUpgrade(id: UpgradeId) {
+    this.world.buyUpgrade(id);
+    this.emit();
   }
 
   /** `tap`: kurzes Antippen statt Ziehen (dreht ein vorhandenes gleiches Gebaeude). */

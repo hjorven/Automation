@@ -14,6 +14,9 @@ export interface Host {
   readonly powerFactor: number;
   /** Auslastung der Kraftwerke (0..1): so schnell verbrennen sie Brennstoff. */
   readonly powerLoad: number;
+  /** Tempo-Multiplikatoren aus den Endlos-Upgrades (1 = normal). */
+  readonly miningSpeed: number;
+  readonly craftingSpeed: number;
   recipeUnlocked(r: Recipe): boolean;
   /** Tempo-Faktor fuer Bohrer und Pumpen aus der Forschung (1 = normal). */
   readonly extractBoost?: number;
@@ -179,7 +182,7 @@ export class Extractor extends EntityBase {
   }
 
   update(host: Host): void {
-    if (this.buffer === null && (this.timer += host.powerFactor * (host.extractBoost ?? 1)) >= this.interval) {
+    if (this.buffer === null && (this.timer += host.powerFactor * host.miningSpeed * (host.extractBoost ?? 1)) >= this.interval) {
       this.timer -= this.interval;
       this.buffer = this.ore;
     }
@@ -240,7 +243,7 @@ export class Machine extends EntityBase {
       this.crafting = true;
       this.progress = 0;
     }
-    if (r && this.crafting && (this.progress += host.powerFactor) >= r.ticks) {
+    if (r && this.crafting && (this.progress += host.powerFactor * host.craftingSpeed) >= r.ticks) {
       for (const s of r.outputs) this.output.set(s.item, (this.output.get(s.item) ?? 0) + s.count);
       this.crafting = false;
     }
